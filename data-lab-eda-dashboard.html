@@ -1,0 +1,2119 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Lab — automatic EDA for any spreadsheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+/* ── tokens ───────────────────────────────────────────────── */
+:root[data-theme="dark"]{
+  --bg:#0a0f1d; --bg2:#070b16; --panel:#111a2d; --panel2:#18233a; --panel3:#1e2b45;
+  --border:#243452; --border2:#2f4166; --text:#e9eff9; --text2:#c3d0e4; --muted:#8598b6;
+  --accent:#2dd4bf; --accent2:#f59e0b; --sky:#38bdf8; --violet:#a855f7;
+  --ok:#10b981; --warn:#f59e0b; --bad:#ef4444;
+  --grid:rgba(148,163,184,.13); --shadow:0 1px 0 rgba(255,255,255,.03), 0 18px 44px -28px rgba(0,0,0,.9);
+  --dz:rgba(45,212,191,.06);
+}
+:root[data-theme="light"]{
+  --bg:#eef2f8; --bg2:#e4eaf4; --panel:#ffffff; --panel2:#f5f8fc; --panel3:#e9eff8;
+  --border:#d6e0ee; --border2:#c1d0e5; --text:#0d1626; --text2:#2c3a52; --muted:#5d708c;
+  --accent:#0d9488; --accent2:#b45309; --sky:#0284c7; --violet:#7c3aed;
+  --ok:#047857; --warn:#b45309; --bad:#b91c1c;
+  --grid:rgba(71,85,105,.14); --shadow:0 1px 2px rgba(15,23,42,.05), 0 14px 34px -26px rgba(15,23,42,.45);
+  --dz:rgba(13,148,136,.06);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:
+    radial-gradient(1100px 620px at 82% -12%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 62%),
+    radial-gradient(760px 460px at 4% 4%, color-mix(in srgb, var(--violet) 9%, transparent), transparent 60%),
+    var(--bg);
+  color:var(--text); font-family:Inter,system-ui,-apple-system,sans-serif; font-size:14px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; min-height:100vh;
+}
+h1,h2,h3,h4{font-family:'Space Grotesk',Inter,sans-serif; margin:0; letter-spacing:-.015em}
+a{color:var(--accent)}
+::selection{background:color-mix(in srgb,var(--accent) 34%,transparent)}
+
+/* ── top bar ──────────────────────────────────────────────── */
+.topbar{
+  position:sticky; top:0; z-index:60; display:flex; align-items:center; gap:18px;
+  padding:14px 26px; background:color-mix(in srgb,var(--bg) 88%, transparent);
+  backdrop-filter:blur(14px); border-bottom:1px solid var(--border);
+}
+.brand{display:flex; align-items:center; gap:12px; min-width:0}
+.brand__mark{
+  width:34px;height:34px;border-radius:9px;flex:none;
+  background:linear-gradient(150deg,var(--accent),var(--sky) 55%,var(--violet));
+  display:grid;place-items:center; box-shadow:0 6px 18px -8px var(--accent);
+}
+.brand__mark svg{width:19px;height:19px}
+.brand__name{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;letter-spacing:-.02em}
+.brand__tag{font-size:11.5px;color:var(--muted);font-family:'IBM Plex Mono',monospace}
+.topbar__spacer{flex:1}
+.icon-btn{
+  border:1px solid var(--border); background:var(--panel); color:var(--text2);
+  height:36px; padding:0 13px; border-radius:9px; cursor:pointer; font-size:12.5px; font-weight:500;
+  display:inline-flex; align-items:center; gap:7px; font-family:Inter,sans-serif; transition:.15s;
+}
+.icon-btn:hover{border-color:var(--accent); color:var(--text)}
+.icon-btn:disabled{opacity:.4; cursor:not-allowed}
+.icon-btn svg{width:15px;height:15px}
+
+/* ── layout ───────────────────────────────────────────────── */
+.wrap{display:grid; grid-template-columns:308px minmax(0,1fr); gap:24px; padding:24px 26px 80px; align-items:start}
+@media (max-width:1080px){ .wrap{grid-template-columns:1fr; padding:16px} }
+
+.sidebar{position:sticky; top:78px; display:flex; flex-direction:column; gap:14px}
+@media (max-width:1080px){ .sidebar{position:static} }
+
+.step{
+  background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; box-shadow:var(--shadow);
+  transition:.2s;
+}
+.step.is-locked{opacity:.42; pointer-events:none; filter:saturate(.4)}
+.step__num{
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--accent); display:flex; align-items:center; gap:8px; margin-bottom:10px;
+}
+.step__num::after{content:''; flex:1; height:1px; background:var(--border)}
+.step h2{font-size:14.5px; margin-bottom:4px}
+.step p.hint{font-size:12px; color:var(--muted); margin:0 0 12px}
+
+/* dropzone */
+.dropzone{
+  border:1.5px dashed var(--border2); border-radius:12px; padding:22px 16px; text-align:center;
+  cursor:pointer; background:var(--dz); transition:.18s; outline:none;
+}
+.dropzone:hover,.dropzone:focus-visible,.dropzone.is-over{border-color:var(--accent); background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.dropzone.has-file{border-style:solid; border-color:var(--accent); text-align:left; display:flex; gap:12px; align-items:center}
+.dropzone svg{width:26px;height:26px;color:var(--accent); flex:none}
+.dz__title{font-weight:600; font-size:13px; word-break:break-all}
+.dz__sub{font-size:11.5px; color:var(--muted); font-family:'IBM Plex Mono',monospace}
+
+/* problem selector */
+.problems{display:grid; gap:7px}
+.problem{
+  display:flex; align-items:flex-start; gap:10px; text-align:left; width:100%;
+  border:1px solid var(--border); background:var(--panel2); color:var(--text2);
+  padding:10px 12px; border-radius:10px; cursor:pointer; font-family:Inter,sans-serif; font-size:13px; transition:.15s;
+}
+.problem:hover{border-color:var(--border2); color:var(--text)}
+.problem.is-active{border-color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,var(--panel2)); color:var(--text)}
+.problem b{display:block; font-weight:600; font-size:13px}
+.problem span{display:block; font-size:11.5px; color:var(--muted); line-height:1.35}
+.problem .dot{width:8px;height:8px;border-radius:50%;background:var(--border2); margin-top:6px; flex:none}
+.problem.is-active .dot{background:var(--accent); box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent)}
+
+.field{margin-bottom:11px}
+.field label{display:block; font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin-bottom:5px; font-family:'IBM Plex Mono',monospace}
+select{
+  width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--border);
+  border-radius:9px; padding:9px 10px; font-family:'IBM Plex Mono',monospace; font-size:12.5px; cursor:pointer;
+}
+select:focus{outline:2px solid var(--accent); outline-offset:1px}
+.mini-select{width:auto; padding:5px 8px; font-size:11.5px}
+.inline-toggle{display:flex; align-items:center; gap:8px; margin-left:auto}
+.inline-toggle label{font-size:11px; color:var(--muted); font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.08em}
+
+.run{
+  width:100%; border:0; border-radius:11px; padding:13px; cursor:pointer;
+  background:linear-gradient(135deg,var(--accent),var(--sky)); color:#04121b;
+  font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; letter-spacing:-.01em;
+  box-shadow:0 10px 26px -14px var(--accent); transition:.15s;
+}
+.run:hover:not(:disabled){transform:translateY(-1px); box-shadow:0 14px 30px -14px var(--accent)}
+.run:disabled{opacity:.35; cursor:not-allowed; box-shadow:none}
+.run.is-busy{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.72}}
+.status{font-size:11.5px; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin:10px 0 0; word-break:break-word}
+.status--error{color:var(--bad)}
+
+/* ── results ──────────────────────────────────────────────── */
+.results-shell{min-width:0}
+.empty{
+  border:1px solid var(--border); border-radius:16px; background:var(--panel); padding:56px 34px; text-align:center; box-shadow:var(--shadow);
+}
+.empty h2{font-size:22px; margin-bottom:10px}
+.empty p{color:var(--muted); max-width:56ch; margin:0 auto 22px}
+.checklist{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; text-align:left; margin-top:26px}
+.checklist div{
+  border:1px solid var(--border); border-radius:10px; padding:11px 13px; background:var(--panel2);
+  font-size:12.5px; color:var(--text2);
+}
+.checklist strong{display:block; font-family:'Space Grotesk',sans-serif; font-size:12.5px; color:var(--text); margin-bottom:2px}
+
+.tabs{display:flex; gap:4px; overflow-x:auto; padding:4px; background:var(--panel); border:1px solid var(--border); border-radius:12px; margin-bottom:18px; position:sticky; top:70px; z-index:40; box-shadow:var(--shadow)}
+.tab{
+  border:0; background:transparent; color:var(--muted); padding:9px 15px; border-radius:9px; cursor:pointer;
+  font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; white-space:nowrap; transition:.15s;
+}
+.tab:hover{color:var(--text); background:var(--panel2)}
+.tab.is-active{background:color-mix(in srgb,var(--accent) 16%,var(--panel2)); color:var(--text); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent)}
+.panel{display:flex; flex-direction:column; gap:18px}
+
+.card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:18px; box-shadow:var(--shadow); min-width:0}
+.card__head{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--border)}
+.card__title{font-size:15.5px}
+.card__sub{margin:0; font-size:12px; color:var(--muted)}
+.subhead{font-family:'IBM Plex Mono',monospace; font-size:11.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin:14px 0 6px}
+
+.tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:9px}
+.tile{border:1px solid var(--border); border-radius:11px; padding:12px; background:var(--panel2); display:flex; flex-direction:column; gap:3px; min-width:0}
+.tile__label{font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); font-family:'IBM Plex Mono',monospace}
+.tile__value{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:19px; letter-spacing:-.02em; word-break:break-word}
+.tile__value small{font-size:12px; font-weight:500; color:var(--muted)}
+.tile__note{font-size:11px; color:var(--muted); line-height:1.35}
+.tile--ok{border-left:3px solid var(--ok)}
+.tile--warn{border-left:3px solid var(--warn)}
+.tile--bad{border-left:3px solid var(--bad)}
+
+/* tables */
+.tablewrap{overflow:auto; max-height:560px; border:1px solid var(--border); border-radius:11px; margin-top:12px}
+.tbl{border-collapse:separate; border-spacing:0; width:100%; font-family:'IBM Plex Mono',monospace; font-size:12px}
+.tbl th{
+  position:sticky; top:0; z-index:2; background:var(--panel3); color:var(--muted); text-align:left;
+  padding:9px 11px; font-weight:600; white-space:nowrap; border-bottom:1px solid var(--border2);
+  font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+}
+.tbl td{padding:8px 11px; border-bottom:1px solid var(--border); color:var(--text2); white-space:nowrap; max-width:340px; overflow:hidden; text-overflow:ellipsis}
+.tbl tbody tr:hover td{background:var(--panel2); color:var(--text)}
+.tbl td.sticky{position:sticky; left:0; background:var(--panel); color:var(--text); font-weight:500; z-index:1}
+.tbl tbody tr:hover td.sticky{background:var(--panel2)}
+.nullcell{color:var(--bad); opacity:.75; font-style:italic}
+
+.badge{display:inline-block; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:600; font-family:'IBM Plex Mono',monospace; letter-spacing:.02em}
+.badge--ok{background:color-mix(in srgb,var(--ok) 20%,transparent); color:var(--ok)}
+.badge--warn{background:color-mix(in srgb,var(--warn) 20%,transparent); color:var(--warn)}
+.badge--bad{background:color-mix(in srgb,var(--bad) 20%,transparent); color:var(--bad)}
+.badge--num{background:color-mix(in srgb,var(--sky) 20%,transparent); color:var(--sky)}
+.badge--cat{background:color-mix(in srgb,var(--violet) 20%,transparent); color:var(--violet)}
+.badge--date{background:color-mix(in srgb,var(--accent) 20%,transparent); color:var(--accent)}
+.badge--bool{background:color-mix(in srgb,var(--accent2) 20%,transparent); color:var(--accent2)}
+.badge--id{background:color-mix(in srgb,var(--muted) 22%,transparent); color:var(--muted)}
+.corrpill{display:inline-block; padding:2px 9px; border-radius:6px; font-weight:600; color:var(--text)}
+:root[data-theme="light"] .corrpill{color:#0d1626}
+.flag-bad{color:var(--bad); font-weight:600}
+.flag-warn{color:var(--warn); font-weight:600}
+.flag-ok{color:var(--ok)}
+
+.mbar{position:relative; display:flex; align-items:center; gap:8px; min-width:110px}
+.mbar__fill{height:6px; border-radius:3px; min-width:2px}
+.mbar__fill--ok{background:var(--ok)}
+.mbar__fill--warn{background:var(--warn)}
+.mbar__fill--bad{background:var(--bad)}
+.mbar span{font-size:11px; color:var(--muted)}
+
+.plot{width:100%; margin-top:10px}
+.plotgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr)); gap:14px; margin-top:12px}
+@media (max-width:620px){ .plotgrid{grid-template-columns:1fr} }
+.plotcell{border:1px solid var(--border); border-radius:12px; padding:12px; background:var(--panel2); min-width:0}
+.plotcell__head{display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:13px}
+.plotcell__head strong{font-family:'Space Grotesk',sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.plotcell__head span{font-size:11px; color:var(--muted); font-family:'IBM Plex Mono',monospace; white-space:nowrap}
+.plotcell__meta{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+.plotcell__meta span{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--muted); background:var(--panel3); padding:2px 7px; border-radius:5px}
+
+.note{font-size:12.5px; color:var(--muted); margin:12px 0 0; padding-left:11px; border-left:2px solid var(--border2); line-height:1.5}
+.note--good{border-color:var(--ok); color:var(--text2)}
+.note--warn{border-color:var(--warn); color:var(--text2)}
+.note--bad{border-color:var(--bad); color:var(--text2)}
+
+.findings{display:flex; flex-direction:column; gap:9px}
+.finding{display:flex; gap:13px; border:1px solid var(--border); border-radius:11px; padding:13px; background:var(--panel2)}
+.finding h4{font-size:13.5px; margin-bottom:3px}
+.finding p{margin:0; font-size:12.5px; color:var(--muted); line-height:1.5}
+.finding__sev{
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; text-transform:uppercase; letter-spacing:.1em;
+  padding:3px 7px; border-radius:5px; height:fit-content; font-weight:600; flex:none; min-width:56px; text-align:center;
+}
+.finding--high{border-left:3px solid var(--bad)}
+.finding--high .finding__sev{background:color-mix(in srgb,var(--bad) 20%,transparent); color:var(--bad)}
+.finding--medium{border-left:3px solid var(--warn)}
+.finding--medium .finding__sev{background:color-mix(in srgb,var(--warn) 20%,transparent); color:var(--warn)}
+.finding--low{border-left:3px solid var(--muted)}
+.finding--low .finding__sev{background:color-mix(in srgb,var(--muted) 20%,transparent); color:var(--muted)}
+
+.code{
+  background:var(--bg2); border:1px solid var(--border); border-radius:11px; padding:15px; overflow:auto;
+  font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text2); line-height:1.65; margin:12px 0 0; white-space:pre;
+}
+:root[data-theme="light"] .code{background:var(--panel3)}
+
+footer{padding:0 26px 40px; color:var(--muted); font-size:11.5px; font-family:'IBM Plex Mono',monospace}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important} }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand__mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#04121b" stroke-width="2.4" stroke-linecap="round">
+        <path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>
+      </svg>
+    </div>
+    <div>
+      <div class="brand__name">Data Lab</div>
+      <div class="brand__tag">automatic EDA · any CSV or Excel file</div>
+    </div>
+  </div>
+  <div class="topbar__spacer"></div>
+  <button class="icon-btn" id="demoBtn">Try a demo dataset</button>
+  <button class="icon-btn" id="downloadBtn" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
+    Export report
+  </button>
+  <button class="icon-btn" id="themeBtn" aria-label="Switch to light theme">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+    Theme
+  </button>
+</header>
+
+<div class="wrap">
+  <aside class="sidebar">
+    <section class="step" id="step1">
+      <div class="step__num">Step 01</div>
+      <h2>Load a file</h2>
+      <p class="hint">CSV, TSV, XLSX or XLS. Everything runs in your browser — nothing is uploaded anywhere.</p>
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose or drop a data file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+        <div>
+          <div class="dz__title" id="dzTitle">Drop your file here</div>
+          <div class="dz__sub" id="dzSub">or click to browse</div>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm" hidden>
+      <p class="status" id="status">No file loaded yet.</p>
+    </section>
+
+    <section class="step is-locked" id="step2">
+      <div class="step__num">Step 02</div>
+      <h2>Pick the problem</h2>
+      <p class="hint">This decides which diagnostics get built.</p>
+      <div class="problems">
+        <button class="problem is-active" data-value="eda"><span class="dot"></span><span><b>Profile only</b><span>Structure, quality and correlations</span></span></button>
+        <button class="problem" data-value="regression"><span class="dot"></span><span><b>Regression</b><span>Predicting a continuous number</span></span></button>
+        <button class="problem" data-value="classification"><span class="dot"></span><span><b>Classification</b><span>Predicting a category or label</span></span></button>
+        <button class="problem" data-value="timeseries"><span class="dot"></span><span><b>Time series</b><span>Forecasting a value over time</span></span></button>
+      </div>
+      <div style="height:14px"></div>
+      <div class="field">
+        <label id="targetLabel">Target column (optional)</label>
+        <select id="targetSel"></select>
+      </div>
+      <div class="field" id="dateGroup" style="display:none">
+        <label>Date / order column</label>
+        <select id="dateSel"></select>
+      </div>
+      <div class="field" id="periodGroup" style="display:none">
+        <label>Seasonal period</label>
+        <select id="periodSel">
+          <option value="auto">Auto-detect from cadence</option>
+          <option value="7">7 — weekly cycle on daily data</option>
+          <option value="12">12 — yearly cycle on monthly data</option>
+          <option value="4">4 — yearly cycle on quarterly data</option>
+          <option value="24">24 — daily cycle on hourly data</option>
+          <option value="52">52 — yearly cycle on weekly data</option>
+          <option value="0">None — no seasonality</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="step is-locked" id="step3">
+      <div class="step__num">Step 03</div>
+      <h2>Run it</h2>
+      <p class="hint">Every statistic below is computed from your file, live.</p>
+      <button class="run" id="runBtn" disabled>Compute and generate</button>
+    </section>
+  </aside>
+
+  <main class="results-shell" id="resultsShell">
+    <div class="empty" id="emptyState">
+      <h2>Load a spreadsheet and the whole picture builds itself</h2>
+      <p>Point this at any CSV or Excel file. It infers column types, profiles every field, hunts down the problems that break models, and draws the charts that match the question you are asking.</p>
+      <div class="checklist">
+        <div><strong>Shape and types</strong>Row count, inferred dtypes, memory, describe() for numeric and categorical columns</div>
+        <div><strong>Missing values</strong>Per-column counts, a nullity matrix, co-missingness overlap and an imputation plan</div>
+        <div><strong>Duplicates</strong>Exact row repeats, identical columns and unique-key candidates</div>
+        <div><strong>Outliers</strong>Tukey fences at 1.5× and 3× IQR, z-scores, and standardised box plots</div>
+        <div><strong>Correlation</strong>Pearson and Spearman heatmaps on a red-to-green scale, ranked pairs, scatter matrix</div>
+        <div><strong>Multicollinearity</strong>VIF per feature, condition number, eigenvalue scree and redundant pairs</div>
+        <div><strong>Distributions</strong>Histogram plus box plot per column, skew, kurtosis and a Jarque–Bera normality check</div>
+        <div><strong>Problem-specific</strong>Class balance, feature ranking, Q–Q plots, ACF/PACF and seasonal decomposition</div>
+      </div>
+    </div>
+    <div id="results"></div>
+  </main>
+</div>
+
+<footer>Data Lab · everything is computed client-side — your file never leaves this browser tab.</footer>
+
+<script>
+/* ==========================================================================
+   DATA LAB — EDA engine
+   ========================================================================== */
+'use strict';
+
+const NULL_TOKENS = new Set(['', 'na', 'n/a', 'nan', 'null', 'none', 'nil', '-', '--', '?', 'undefined', '#n/a', 'missing']);
+
+const S = {
+  fileName: null,
+  columns: [],      // [{name, values(raw), type, prof}]
+  nRows: 0,
+  problem: 'eda',
+  target: null,
+  dateCol: null,
+  period: 'auto',
+  theme: 'dark',
+  plots: [],
+  insights: []
+};
+
+/* ---------- tiny DOM helpers ---------- */
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html !== undefined) n.innerHTML = html; return n; };
+const fmt = (v, d) => {
+  if (v === null || v === undefined || (typeof v === 'number' && !isFinite(v))) return '—';
+  if (typeof v !== 'number') return String(v);
+  if (Number.isInteger(v) && Math.abs(v) < 1e15) return v.toLocaleString();
+  const dec = d === undefined ? 3 : d;
+  if (Math.abs(v) >= 1e6 || (Math.abs(v) < 1e-4 && v !== 0)) return v.toExponential(2);
+  return Number(v.toFixed(dec)).toLocaleString(undefined, { maximumFractionDigits: dec });
+};
+const pct = v => (v * 100).toFixed(1) + '%';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ==========================================================================
+   1. STATS PRIMITIVES
+   ========================================================================== */
+function mean(a) { let s = 0; for (const v of a) s += v; return s / a.length; }
+function variance(a, m) { if (a.length < 2) return 0; m = m === undefined ? mean(a) : m; let s = 0; for (const v of a) s += (v - m) * (v - m); return s / (a.length - 1); }
+function std(a, m) { return Math.sqrt(variance(a, m)); }
+function quantile(sorted, q) {
+  if (!sorted.length) return NaN;
+  const pos = (sorted.length - 1) * q, base = Math.floor(pos), rest = pos - base;
+  return sorted[base + 1] !== undefined ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
+}
+function skewness(a) {
+  const n = a.length; if (n < 3) return NaN;
+  const m = mean(a), s = std(a, m); if (!s) return 0;
+  let t = 0; for (const v of a) t += Math.pow((v - m) / s, 3);
+  return (n / ((n - 1) * (n - 2))) * t;
+}
+function kurtosis(a) { // excess
+  const n = a.length; if (n < 4) return NaN;
+  const m = mean(a), s = std(a, m); if (!s) return 0;
+  let t = 0; for (const v of a) t += Math.pow((v - m) / s, 4);
+  return (n * (n + 1) / ((n - 1) * (n - 2) * (n - 3))) * t - (3 * (n - 1) * (n - 1)) / ((n - 2) * (n - 3));
+}
+function jarqueBera(a) {
+  const n = a.length; if (n < 8) return null;
+  const m = mean(a), s = std(a, m); if (!s) return null;
+  let s3 = 0, s4 = 0;
+  for (const v of a) { const z = (v - m) / s; s3 += z * z * z; s4 += z * z * z * z; }
+  const g1 = s3 / n, g2 = s4 / n - 3;
+  const jb = (n / 6) * (g1 * g1 + (g2 * g2) / 4);
+  return { jb, p: Math.exp(-jb / 2) }; // chi2 with 2 df survival function
+}
+function pearson(x, y) {
+  const n = x.length; if (n < 3) return NaN;
+  const mx = mean(x), my = mean(y);
+  let num = 0, dx = 0, dy = 0;
+  for (let i = 0; i < n; i++) { const a = x[i] - mx, b = y[i] - my; num += a * b; dx += a * a; dy += b * b; }
+  const den = Math.sqrt(dx * dy);
+  return den === 0 ? NaN : num / den;
+}
+function rankify(a) {
+  const idx = a.map((v, i) => [v, i]).sort((p, q) => p[0] - q[0]);
+  const r = new Array(a.length);
+  let i = 0;
+  while (i < idx.length) {
+    let j = i; while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++;
+    const avg = (i + j) / 2 + 1;
+    for (let k = i; k <= j; k++) r[idx[k][1]] = avg;
+    i = j + 1;
+  }
+  return r;
+}
+function spearman(x, y) { return pearson(rankify(x), rankify(y)); }
+
+/* Matrix inverse (Gauss-Jordan) for VIF */
+function invert(M) {
+  const n = M.length;
+  const A = M.map((row, i) => row.concat(Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))));
+  for (let c = 0; c < n; c++) {
+    let piv = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+    if (Math.abs(A[piv][c]) < 1e-12) return null; // singular
+    [A[c], A[piv]] = [A[piv], A[c]];
+    const d = A[c][c];
+    for (let j = 0; j < 2 * n; j++) A[c][j] /= d;
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = A[r][c];
+      if (!f) continue;
+      for (let j = 0; j < 2 * n; j++) A[r][j] -= f * A[c][j];
+    }
+  }
+  return A.map(r => r.slice(n));
+}
+/* Jacobi eigenvalues of a symmetric matrix -> condition index */
+function eigenvaluesSym(Min) {
+  const n = Min.length;
+  const A = Min.map(r => r.slice());
+  for (let sweep = 0; sweep < 100; sweep++) {
+    let off = 0;
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += A[i][j] * A[i][j];
+    if (off < 1e-12) break;
+    for (let p = 0; p < n - 1; p++) for (let q = p + 1; q < n; q++) {
+      if (Math.abs(A[p][q]) < 1e-14) continue;
+      const theta = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+      const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+      const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < n; k++) {
+        const akp = A[k][p], akq = A[k][q];
+        A[k][p] = c * akp - s * akq; A[k][q] = s * akp + c * akq;
+      }
+      for (let k = 0; k < n; k++) {
+        const apk = A[p][k], aqk = A[q][k];
+        A[p][k] = c * apk - s * aqk; A[q][k] = s * apk + c * aqk;
+      }
+    }
+  }
+  return A.map((r, i) => r[i]).sort((a, b) => b - a);
+}
+
+/* ==========================================================================
+   2. PARSING & TYPE INFERENCE
+   ========================================================================== */
+function isNullish(v) {
+  if (v === null || v === undefined) return true;
+  if (typeof v === 'number') return !isFinite(v);
+  if (v instanceof Date) return isNaN(v.getTime());
+  return NULL_TOKENS.has(String(v).trim().toLowerCase());
+}
+function toNum(v) {
+  if (typeof v === 'number') return v;
+  if (v instanceof Date) return NaN;
+  let s = String(v).trim().replace(/[, ]/g, '');
+  let neg = false;
+  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+  let mult = 1;
+  if (/%$/.test(s)) { s = s.slice(0, -1); mult = 0.01; }
+  s = s.replace(/^[$£€₹]/, '');
+  if (s === '' || !/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(s)) return NaN;
+  const n = parseFloat(s) * mult;
+  return neg ? -n : n;
+}
+const DATE_RE = /^\d{4}[-/]\d{1,2}([-/]\d{1,2})?([ T]\d{1,2}:\d{2}(:\d{2})?)?/;
+const DATE_RE2 = /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}([ T]\d{1,2}:\d{2})?/;
+const MONTH_RE = /^\d{1,2}[-\s][A-Za-z]{3,9}[-\s]\d{2,4}$|^[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}$/;
+function toDate(v) {
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  const s = String(v).trim();
+  if (!(DATE_RE.test(s) || DATE_RE2.test(s) || MONTH_RE.test(s))) return null;
+  const d = new Date(s.replace(/(\d{4})\/(\d{1,2})\/(\d{1,2})/, '$1-$2-$3'));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function inferType(name, raw) {
+  const present = raw.filter(v => !isNullish(v));
+  if (!present.length) return 'empty';
+  const uniq = new Set(present.map(v => (v instanceof Date ? v.getTime() : String(v).trim().toLowerCase())));
+  const boolSet = new Set(['true', 'false', 'yes', 'no', 'y', 'n', 't', 'f']);
+  if (uniq.size <= 2 && Array.from(uniq).every(v => boolSet.has(String(v)))) return 'boolean';
+
+  let dates = 0;
+  const sample = present.slice(0, Math.min(present.length, 300));
+  for (const v of sample) if (toDate(v)) dates++;
+  if (dates / sample.length > 0.9) return 'datetime';
+
+  let nums = 0;
+  for (const v of present) if (!isNaN(toNum(v))) nums++;
+  if (nums / present.length > 0.92) {
+    if (uniq.size <= 2) return 'binary';
+    if (uniq.size <= 12 && present.every(v => Number.isInteger(toNum(v)))) return 'discrete';
+    return 'numeric';
+  }
+  if (uniq.size === present.length && present.length > 20) return 'id';
+  return 'categorical';
+}
+const NUMERIC_KINDS = new Set(['numeric', 'discrete', 'binary']);
+
+function buildColumn(name, raw) {
+  const type = inferType(name, raw);
+  const c = { name, raw, type, missing: 0, present: 0 };
+  c.missing = raw.reduce((s, v) => s + (isNullish(v) ? 1 : 0), 0);
+  c.present = raw.length - c.missing;
+  c.missingPct = raw.length ? c.missing / raw.length : 0;
+
+  if (NUMERIC_KINDS.has(type)) {
+    c.num = raw.map(v => (isNullish(v) ? null : toNum(v)));
+    const vals = c.num.filter(v => v !== null && isFinite(v));
+    c.values = vals;
+    const sorted = vals.slice().sort((a, b) => a - b);
+    c.sorted = sorted;
+    if (vals.length) {
+      c.mean = mean(vals); c.std = std(vals, c.mean);
+      c.min = sorted[0]; c.max = sorted[sorted.length - 1];
+      c.q1 = quantile(sorted, .25); c.median = quantile(sorted, .5); c.q3 = quantile(sorted, .75);
+      c.p5 = quantile(sorted, .05); c.p95 = quantile(sorted, .95);
+      c.iqr = c.q3 - c.q1;
+      c.lowFence = c.q1 - 1.5 * c.iqr; c.highFence = c.q3 + 1.5 * c.iqr;
+      c.exLow = c.q1 - 3 * c.iqr; c.exHigh = c.q3 + 3 * c.iqr;
+      c.outliers = vals.filter(v => v < c.lowFence || v > c.highFence).length;
+      c.extreme = vals.filter(v => v < c.exLow || v > c.exHigh).length;
+      c.zOut = c.std ? vals.filter(v => Math.abs((v - c.mean) / c.std) > 3).length : 0;
+      c.skew = skewness(vals); c.kurt = kurtosis(vals);
+      c.jb = jarqueBera(vals);
+      c.cv = c.mean ? c.std / Math.abs(c.mean) : null;
+      c.zeros = vals.filter(v => v === 0).length;
+      c.negatives = vals.filter(v => v < 0).length;
+    }
+    c.unique = new Set(vals).size;
+  } else if (type === 'datetime') {
+    c.dates = raw.map(v => (isNullish(v) ? null : toDate(v)));
+    const ds = c.dates.filter(Boolean).map(d => d.getTime()).sort((a, b) => a - b);
+    c.values = ds;
+    c.min = ds.length ? new Date(ds[0]) : null;
+    c.max = ds.length ? new Date(ds[ds.length - 1]) : null;
+    c.unique = new Set(ds).size;
+  } else {
+    const cats = raw.map(v => (isNullish(v) ? null : String(v).trim()));
+    c.cats = cats;
+    const counts = new Map();
+    for (const v of cats) if (v !== null) counts.set(v, (counts.get(v) || 0) + 1);
+    c.counts = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    c.unique = counts.size;
+    c.mode = c.counts.length ? c.counts[0][0] : null;
+    c.modeFreq = c.counts.length ? c.counts[0][1] : 0;
+    c.avgLen = cats.filter(Boolean).length ? mean(cats.filter(Boolean).map(v => v.length)) : 0;
+  }
+  c.constant = c.unique <= 1;
+  c.cardRatio = c.present ? c.unique / c.present : 0;
+  return c;
+}
+
+/* ==========================================================================
+   3. FILE INTAKE
+   ========================================================================== */
+function ingest(rows2d) {
+  // rows2d: array of arrays, first row = header
+  let header = rows2d[0].map((h, i) => {
+    const s = h === null || h === undefined || String(h).trim() === '' ? 'column_' + (i + 1) : String(h).trim();
+    return s;
+  });
+  const seen = new Map();
+  header = header.map(h => {
+    if (!seen.has(h)) { seen.set(h, 1); return h; }
+    const k = seen.get(h) + 1; seen.set(h, k); return h + '_' + k;
+  });
+  const body = rows2d.slice(1).filter(r => r.some(v => !isNullish(v)));
+  S.nRows = body.length;
+  S.columns = header.map((h, i) => buildColumn(h, body.map(r => (r[i] === undefined ? null : r[i]))));
+  S.body = body;
+  S.header = header;
+}
+
+function readFile(file) {
+  setStatus('Reading ' + file.name + '…');
+  const reader = new FileReader();
+  const isCSV = /\.(csv|tsv|txt)$/i.test(file.name);
+  reader.onload = e => {
+    try {
+      let rows;
+      if (isCSV && window.Papa) {
+        const res = Papa.parse(e.target.result, { skipEmptyLines: 'greedy', dynamicTyping: false });
+        rows = res.data;
+      } else {
+        const wb = XLSX.read(e.target.result, { type: isCSV ? 'string' : 'array', cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true, blankrows: false });
+      }
+      if (!rows || rows.length < 2) throw new Error('The file needs a header row and at least one data row.');
+      S.fileName = file.name;
+      ingest(rows);
+      onDataLoaded();
+    } catch (err) {
+      setStatus('Could not read that file: ' + err.message, true);
+      console.error(err);
+    }
+  };
+  reader.onerror = () => setStatus('The file could not be opened. Try re-saving it as .csv or .xlsx.', true);
+  if (isCSV) reader.readAsText(file); else reader.readAsArrayBuffer(file);
+}
+
+function setStatus(msg, isError) {
+  const n = $('#status');
+  n.innerHTML = esc(msg);
+  n.className = 'status' + (isError ? ' status--error' : '');
+}
+
+function onDataLoaded() {
+  setStatus(S.fileName + ' · ' + S.nRows.toLocaleString() + ' rows × ' + S.columns.length + ' columns loaded.');
+  $('#step2').classList.remove('is-locked');
+  $('#step3').classList.remove('is-locked');
+  populateSelectors();
+  $('#runBtn').disabled = false;
+  $('#dropzone').classList.add('has-file');
+  $('#dzTitle').textContent = S.fileName;
+  $('#dzSub').textContent = S.nRows.toLocaleString() + ' rows · ' + S.columns.length + ' columns · click to replace';
+}
+
+/* ==========================================================================
+   4. CONFIG UI
+   ========================================================================== */
+function populateSelectors() {
+  const tgt = $('#targetSel'), dt = $('#dateSel');
+  tgt.innerHTML = '<option value="">— none (unsupervised profile) —</option>';
+  dt.innerHTML = '<option value="">— auto-detect —</option>';
+  S.columns.forEach(c => {
+    tgt.appendChild(new Option(c.name + '  (' + c.type + ')', c.name));
+    if (c.type === 'datetime' || c.type === 'numeric' || c.type === 'discrete') dt.appendChild(new Option(c.name + '  (' + c.type + ')', c.name));
+  });
+  // sensible default target
+  const guess = S.columns.find(c => /^(target|label|class|y|outcome|price|sales|churn|result)$/i.test(c.name));
+  if (guess) tgt.value = guess.name;
+  const dguess = S.columns.find(c => c.type === 'datetime');
+  if (dguess) dt.value = dguess.name;
+  syncProblemUI();
+}
+function syncProblemUI() {
+  const p = S.problem;
+  $('#dateGroup').style.display = p === 'timeseries' ? '' : 'none';
+  $('#periodGroup').style.display = p === 'timeseries' ? '' : 'none';
+  $('#targetLabel').textContent = p === 'timeseries' ? 'Series to forecast' :
+    p === 'classification' ? 'Target class column' :
+      p === 'regression' ? 'Target value column' : 'Target column (optional)';
+}
+
+/* ==========================================================================
+   5. THEME + PLOT TEMPLATE
+   ========================================================================== */
+function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function layoutBase(title, extra) {
+  const l = {
+    title: title ? { text: title, font: { size: 14, family: 'Space Grotesk, sans-serif', color: cssVar('--text') }, x: 0, xanchor: 'left' } : undefined,
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { family: 'IBM Plex Mono, monospace', size: 11, color: cssVar('--muted') },
+    margin: { l: 58, r: 22, t: title ? 42 : 18, b: 48 },
+    xaxis: { gridcolor: cssVar('--grid'), zerolinecolor: cssVar('--grid'), linecolor: cssVar('--grid'), automargin: true },
+    yaxis: { gridcolor: cssVar('--grid'), zerolinecolor: cssVar('--grid'), linecolor: cssVar('--grid'), automargin: true },
+    legend: { orientation: 'h', y: -0.22, font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
+    hoverlabel: { bgcolor: cssVar('--panel2'), bordercolor: cssVar('--accent'), font: { family: 'IBM Plex Mono, monospace', color: cssVar('--text') } },
+    showlegend: false
+  };
+  return Object.assign(l, extra || {});
+}
+const CFG = { displayModeBar: true, displaylogo: false, responsive: true, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d'], toImageButtonOptions: { format: 'png', scale: 2 } };
+function draw(node, data, layout) {
+  Plotly.newPlot(node, data, layout, CFG);
+  S.plots.push(node);
+}
+function redrawAll() { S.plots.forEach(n => { if (n && n.data) Plotly.relayout(n, layoutBase(n.layout.title ? n.layout.title.text : '', n._extra || {})); }); }
+
+/* correlation colour scale: deep red (-1) → neutral (0) → deep green (+1) */
+const CORR_SCALE = [
+  [0.0, '#7f1d1d'], [0.1, '#b91c1c'], [0.2, '#dc2626'], [0.3, '#f87171'], [0.4, '#fca5a5'],
+  [0.5, '#e5e7eb'],
+  [0.6, '#a7f3d0'], [0.7, '#6ee7b7'], [0.8, '#34d399'], [0.9, '#10b981'], [1.0, '#047857']
+];
+function corrColor(v) {
+  const a = Math.abs(v);
+  if (isNaN(v)) return 'var(--muted)';
+  if (v < 0) return `rgba(220,38,38,${0.12 + a * 0.78})`;
+  return `rgba(16,185,129,${0.12 + a * 0.78})`;
+}
+
+/* ==========================================================================
+   6. RENDER: cards / tables
+   ========================================================================== */
+function card(title, sub) {
+  const c = el('section', 'card');
+  if (title) {
+    const h = el('header', 'card__head');
+    h.appendChild(el('h3', 'card__title', esc(title)));
+    if (sub) h.appendChild(el('p', 'card__sub', esc(sub)));
+    c.appendChild(h);
+  }
+  return c;
+}
+function table(headers, rows, opts) {
+  opts = opts || {};
+  const wrap = el('div', 'tablewrap');
+  const t = el('table', 'tbl');
+  const th = el('thead');
+  th.innerHTML = '<tr>' + headers.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr>';
+  t.appendChild(th);
+  const tb = el('tbody');
+  rows.forEach(r => {
+    const tr = el('tr');
+    r.forEach((cell, i) => {
+      const td = el('td');
+      if (cell && typeof cell === 'object' && cell.html !== undefined) { td.innerHTML = cell.html; if (cell.cls) td.className = cell.cls; if (cell.style) td.setAttribute('style', cell.style); }
+      else td.textContent = cell === null || cell === undefined ? '—' : cell;
+      if (i === 0 && opts.stickyFirst) td.classList.add('sticky');
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+  wrap.appendChild(t);
+  return wrap;
+}
+function statTile(label, value, tone, note) {
+  const d = el('div', 'tile' + (tone ? ' tile--' + tone : ''));
+  d.innerHTML = '<span class="tile__label">' + esc(label) + '</span><span class="tile__value">' + value + '</span>' + (note ? '<span class="tile__note">' + esc(note) + '</span>' : '');
+  return d;
+}
+function plotBox(h) { const d = el('div', 'plot'); d.style.height = (h || 320) + 'px'; return d; }
+function note(text, tone) { return el('p', 'note' + (tone ? ' note--' + tone : ''), text); }
+function badge(text, tone) { return '<span class="badge badge--' + tone + '">' + esc(text) + '</span>'; }
+
+/* ==========================================================================
+   7. THE ANALYSIS PIPELINE
+   ========================================================================== */
+function run() {
+  S.plots = []; S.insights = [];
+  S.target = $('#targetSel').value || null;
+  S.dateCol = $('#dateSel').value || null;
+  S.period = $('#periodSel').value;
+
+  const out = $('#results');
+  out.innerHTML = '';
+  $('#resultsShell').classList.add('is-live');
+  $('#emptyState').style.display = 'none';
+
+  const tabs = ['Overview', 'Data quality', 'Distributions', 'Correlation', 'Multicollinearity',
+    S.problem === 'timeseries' ? 'Time series' : S.problem === 'classification' ? 'Classification' : S.problem === 'regression' ? 'Regression' : 'Relationships',
+    'Findings'];
+  const nav = el('nav', 'tabs');
+  const panels = {};
+  tabs.forEach((t, i) => {
+    const b = el('button', 'tab' + (i === 0 ? ' is-active' : ''), esc(t));
+    b.onclick = () => {
+      $$('.tab', nav).forEach(x => x.classList.remove('is-active'));
+      b.classList.add('is-active');
+      Object.values(panels).forEach(p => p.style.display = 'none');
+      panels[t].style.display = '';
+      $$('.plot', panels[t]).forEach(p => { if (p.data) Plotly.Plots.resize(p); });
+    };
+    nav.appendChild(b);
+    const p = el('div', 'panel');
+    p.style.display = i === 0 ? '' : 'none';
+    panels[t] = p;
+  });
+  out.appendChild(nav);
+  tabs.forEach(t => out.appendChild(panels[t]));
+
+  try {
+    renderOverview(panels['Overview']);
+    renderQuality(panels['Data quality']);
+    renderDistributions(panels['Distributions']);
+    const corr = renderCorrelation(panels['Correlation']);
+    renderMulticollinearity(panels['Multicollinearity'], corr);
+    if (S.problem === 'timeseries') renderTimeSeries(panels['Time series']);
+    else if (S.problem === 'classification') renderClassification(panels['Classification']);
+    else if (S.problem === 'regression') renderRegression(panels['Regression']);
+    else renderRelationships(panels['Relationships']);
+    renderFindings(panels['Findings']);
+  } catch (err) {
+    console.error(err);
+    out.appendChild(note('Something broke while computing: ' + err.message + ' — check the browser console for the trace.', 'bad'));
+  }
+  $('#downloadBtn').disabled = false;
+  document.getElementById('resultsShell').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ---------- 7.1 OVERVIEW ---------- */
+function renderOverview(root) {
+  const cols = S.columns;
+  const numeric = cols.filter(c => NUMERIC_KINDS.has(c.type));
+  const cat = cols.filter(c => c.type === 'categorical' || c.type === 'boolean');
+  const dates = cols.filter(c => c.type === 'datetime');
+  const ids = cols.filter(c => c.type === 'id');
+  const totalCells = S.nRows * cols.length;
+  const missCells = cols.reduce((s, c) => s + c.missing, 0);
+  const dupRows = countDuplicateRows();
+  const memBytes = estimateMemory();
+
+  const c1 = card('Dataset at a glance', S.fileName);
+  const grid = el('div', 'tiles');
+  [
+    ['Rows', S.nRows.toLocaleString()],
+    ['Columns', cols.length],
+    ['Numeric', numeric.length],
+    ['Categorical', cat.length],
+    ['Datetime', dates.length],
+    ['ID-like', ids.length],
+    ['Missing cells', missCells.toLocaleString() + ' <small>(' + pct(totalCells ? missCells / totalCells : 0) + ')</small>', missCells ? (missCells / totalCells > 0.05 ? 'warn' : 'ok') : 'ok'],
+    ['Duplicate rows', dupRows.toLocaleString() + ' <small>(' + pct(S.nRows ? dupRows / S.nRows : 0) + ')</small>', dupRows ? 'warn' : 'ok'],
+    ['Constant columns', cols.filter(c => c.constant).length, cols.filter(c => c.constant).length ? 'warn' : 'ok'],
+    ['Approx. size', (memBytes / 1048576).toFixed(2) + ' MB']
+  ].forEach(t => grid.appendChild(statTile(t[0], t[1], t[2])));
+  c1.appendChild(grid);
+  root.appendChild(c1);
+
+  // column inventory
+  const c2 = card('Column inventory', 'Inferred type, fill rate and cardinality for every column');
+  const rows = cols.map(c => [
+    c.name,
+    { html: badge(c.type, typeTone(c.type)) },
+    c.present.toLocaleString(),
+    { html: missBar(c.missingPct) },
+    c.unique.toLocaleString(),
+    pct(c.cardRatio),
+    { html: describeShort(c) }
+  ]);
+  c2.appendChild(table(['Column', 'Type', 'Non-null', 'Missing', 'Unique', 'Uniq %', 'Summary'], rows, { stickyFirst: true }));
+  root.appendChild(c2);
+
+  // describe() numeric
+  if (numeric.length) {
+    const c3 = card('Numeric summary — describe()', 'Central tendency, spread, shape');
+    const rows2 = numeric.map(c => [c.name, c.present, fmt(c.mean), fmt(c.std), fmt(c.min), fmt(c.q1), fmt(c.median), fmt(c.q3), fmt(c.max), fmt(c.iqr),
+    { html: colorNum(c.skew, 1) }, { html: colorNum(c.kurt, 3) }, fmt(c.cv)]);
+    c3.appendChild(table(['Column', 'count', 'mean', 'std', 'min', '25%', '50%', '75%', 'max', 'IQR', 'skew', 'kurtosis', 'CV'], rows2, { stickyFirst: true }));
+    c3.appendChild(note('skew beyond ±1 and excess kurtosis beyond ±3 are highlighted — those columns are candidates for a log or Box-Cox style transform.'));
+    root.appendChild(c3);
+  }
+
+  // categorical summary
+  if (cat.length) {
+    const c4 = card('Categorical summary', 'Cardinality, mode and dominance');
+    const rows3 = cat.map(c => [c.name, c.present, c.unique, c.mode, c.modeFreq.toLocaleString() + ' (' + pct(c.present ? c.modeFreq / c.present : 0) + ')',
+      fmt(c.avgLen, 1), { html: c.unique > 50 ? badge('high cardinality', 'warn') : c.unique <= 1 ? badge('constant', 'bad') : badge('ok', 'ok') }]);
+    c4.appendChild(table(['Column', 'count', 'unique', 'mode', 'mode freq', 'avg length', 'flag'], rows3, { stickyFirst: true }));
+    root.appendChild(c4);
+  }
+
+  // head preview
+  const c5 = card('First rows', 'Raw values as parsed');
+  const prevCols = S.header.slice(0, 25);
+  const prevRows = S.body.slice(0, 12).map(r => prevCols.map((_, i) => {
+    const v = r[i];
+    if (isNullish(v)) return { html: '<span class="nullcell">null</span>' };
+    return v instanceof Date ? v.toISOString().slice(0, 19).replace('T', ' ') : String(v);
+  }));
+  c5.appendChild(table(prevCols, prevRows, { stickyFirst: true }));
+  if (S.header.length > 25) c5.appendChild(note('Showing the first 25 of ' + S.header.length + ' columns.'));
+  root.appendChild(c5);
+}
+function typeTone(t) {
+  return t === 'numeric' || t === 'discrete' ? 'num' : t === 'categorical' ? 'cat' : t === 'datetime' ? 'date' :
+    t === 'boolean' || t === 'binary' ? 'bool' : t === 'id' ? 'id' : 'warn';
+}
+function missBar(p) {
+  const tone = p === 0 ? 'ok' : p < .05 ? 'ok' : p < .2 ? 'warn' : 'bad';
+  return '<div class="mbar"><div class="mbar__fill mbar__fill--' + tone + '" style="width:' + Math.max(p * 100, p > 0 ? 3 : 0) + '%"></div><span>' + pct(p) + '</span></div>';
+}
+function colorNum(v, thr) {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  const cls = Math.abs(v) > thr ? 'flag-bad' : Math.abs(v) > thr * 0.5 ? 'flag-warn' : '';
+  return '<span class="' + cls + '">' + fmt(v) + '</span>';
+}
+function describeShort(c) {
+  if (NUMERIC_KINDS.has(c.type)) return 'range ' + fmt(c.min) + ' → ' + fmt(c.max) + ', μ=' + fmt(c.mean);
+  if (c.type === 'datetime') return c.min ? c.min.toISOString().slice(0, 10) + ' → ' + c.max.toISOString().slice(0, 10) : '—';
+  if (c.counts) return c.counts.slice(0, 3).map(p => esc(p[0]) + ' (' + p[1] + ')').join(', ');
+  return '—';
+}
+function countDuplicateRows() {
+  const seen = new Set(); let d = 0;
+  for (const r of S.body) {
+    const k = r.map(v => (isNullish(v) ? '\u0000' : v instanceof Date ? v.getTime() : String(v))).join('\u001f');
+    if (seen.has(k)) d++; else seen.add(k);
+  }
+  return d;
+}
+function estimateMemory() {
+  let b = 0;
+  for (const c of S.columns) b += NUMERIC_KINDS.has(c.type) ? S.nRows * 8 : c.raw.reduce((s, v) => s + (v === null ? 0 : String(v).length * 2), 0);
+  return b;
+}
+
+/* ---------- 7.2 DATA QUALITY ---------- */
+function renderQuality(root) {
+  const cols = S.columns;
+
+  /* missing values */
+  const c1 = card('Missing values', 'Per-column null counts and the pattern of missingness');
+  const withMiss = cols.filter(c => c.missing > 0).sort((a, b) => b.missing - a.missing);
+  if (!withMiss.length) {
+    c1.appendChild(note('No missing values anywhere in the dataset.', 'good'));
+  } else {
+    const p1 = plotBox(Math.max(260, withMiss.length * 26 + 90));
+    c1.appendChild(p1);
+    draw(p1, [{
+      type: 'bar', orientation: 'h',
+      y: withMiss.map(c => c.name), x: withMiss.map(c => c.missing),
+      text: withMiss.map(c => pct(c.missingPct)), textposition: 'outside',
+      marker: { color: withMiss.map(c => c.missingPct > .4 ? '#dc2626' : c.missingPct > .15 ? '#f59e0b' : '#38bdf8') },
+      hovertemplate: '%{y}<br>%{x} missing (%{text})<extra></extra>', name: 'missing'
+    }], layoutBase('Missing count by column', { xaxis: { title: 'rows missing', gridcolor: cssVar('--grid') }, yaxis: { automargin: true, autorange: 'reversed' } }));
+
+    const rows = withMiss.map(c => [c.name, c.missing.toLocaleString(), pct(c.missingPct),
+    { html: c.missingPct > .5 ? badge('consider dropping', 'bad') : c.missingPct > .15 ? badge('model-based impute', 'warn') : badge('median / mode impute', 'ok') },
+      suggestImpute(c)]);
+    c1.appendChild(table(['Column', 'Missing', '% of rows', 'Severity', 'Suggested handling'], rows, { stickyFirst: true }));
+
+    // nullity heatmap
+    const sampleN = Math.min(S.nRows, 400);
+    const step = Math.max(1, Math.floor(S.nRows / sampleN));
+    const z = [], ys = [];
+    for (let i = 0; i < S.nRows; i += step) { ys.push(i); z.push(cols.map(c => (isNullish(c.raw[i]) ? 1 : 0))); }
+    const p2 = plotBox(Math.min(520, Math.max(280, ys.length * 1.2 + 120)));
+    c1.appendChild(p2);
+    draw(p2, [{
+      type: 'heatmap', z, x: cols.map(c => c.name), y: ys,
+      colorscale: [[0, cssVar('--panel2')], [1, '#dc2626']], showscale: false,
+      hovertemplate: 'row %{y} · %{x}<br>%{z}<extra></extra>'
+    }], layoutBase('Nullity matrix — red = missing (sampled rows)', { yaxis: { title: 'row index', autorange: 'reversed' }, xaxis: { tickangle: -35 } }));
+    c1.appendChild(note('Vertical red stripes mean a column is systematically empty; horizontal stripes mean whole rows failed to load. Blocks appearing together suggest the nulls are related (MAR), not random.'));
+
+    // co-missingness
+    if (withMiss.length > 1) {
+      const zz = withMiss.map(a => withMiss.map(b => {
+        let both = 0, any = 0;
+        for (let i = 0; i < S.nRows; i++) { const am = isNullish(a.raw[i]), bm = isNullish(b.raw[i]); if (am && bm) both++; if (am || bm) any++; }
+        return any ? both / any : 0;
+      }));
+      const p3 = plotBox(Math.max(300, withMiss.length * 30 + 140));
+      c1.appendChild(p3);
+      draw(p3, [{
+        type: 'heatmap', z: zz, x: withMiss.map(c => c.name), y: withMiss.map(c => c.name),
+        colorscale: [[0, cssVar('--panel2')], [.5, '#f59e0b'], [1, '#dc2626']], zmin: 0, zmax: 1,
+        colorbar: { title: { text: 'Jaccard', side: 'right' }, thickness: 12 },
+        hovertemplate: '%{y} ∩ %{x}<br>overlap %{z:.2f}<extra></extra>'
+      }], layoutBase('Do nulls co-occur? (Jaccard overlap)', { yaxis: { autorange: 'reversed' }, xaxis: { tickangle: -35 } }));
+    }
+  }
+  root.appendChild(c1);
+
+  /* duplicates */
+  const c2 = card('Duplicates', 'Exact row repeats, duplicate columns and key-candidate checks');
+  const dupRows = countDuplicateRows();
+  const tiles = el('div', 'tiles');
+  tiles.appendChild(statTile('Duplicate rows', dupRows.toLocaleString(), dupRows ? 'warn' : 'ok', dupRows ? pct(dupRows / S.nRows) + ' of the dataset' : 'every row is unique'));
+  tiles.appendChild(statTile('Rows after dedup', (S.nRows - dupRows).toLocaleString(), 'ok'));
+  const dupCols = findDuplicateColumns();
+  tiles.appendChild(statTile('Duplicate columns', dupCols.length, dupCols.length ? 'warn' : 'ok', dupCols.length ? dupCols.map(p => p.join(' = ')).join(', ') : 'no identical pairs'));
+  const keys = S.columns.filter(c => c.unique === S.nRows && c.missing === 0);
+  tiles.appendChild(statTile('Unique-key candidates', keys.length, 'ok', keys.length ? keys.map(c => c.name).join(', ') : 'none — no column uniquely identifies a row'));
+  c2.appendChild(tiles);
+
+  if (dupRows) {
+    const groups = duplicateGroups().slice(0, 8);
+    const rows = groups.map(g => [g.count + '×', g.sample.slice(0, 8).map(v => (isNullish(v) ? '—' : String(v))).join(' · ')]);
+    c2.appendChild(table(['Repeats', 'First columns of the repeated row'], rows));
+    c2.appendChild(note('Showing the top ' + rows.length + ' repeated rows. Drop them with df.drop_duplicates() unless the repetition is meaningful (e.g. transaction logs).', 'warn'));
+  }
+  root.appendChild(c2);
+
+  /* outliers */
+  const numeric = S.columns.filter(c => NUMERIC_KINDS.has(c.type) && c.values && c.values.length > 4);
+  if (numeric.length) {
+    const c3 = card('Outliers — IQR and z-score', 'Tukey fences at 1.5×IQR (mild) and 3×IQR (extreme), plus |z| > 3');
+    const rows = numeric.map(c => [
+      c.name, fmt(c.q1), fmt(c.q3), fmt(c.iqr), fmt(c.lowFence), fmt(c.highFence),
+      { html: outCell(c.outliers, c.values.length) },
+      { html: outCell(c.extreme, c.values.length) },
+      { html: outCell(c.zOut, c.values.length) },
+      { html: c.outliers / c.values.length > .1 ? badge('heavy tails', 'bad') : c.outliers ? badge('some', 'warn') : badge('clean', 'ok') }
+    ]);
+    c3.appendChild(table(['Column', 'Q1', 'Q3', 'IQR', 'Lower fence', 'Upper fence', 'Mild (1.5×)', 'Extreme (3×)', '|z|>3', 'Verdict'], rows, { stickyFirst: true }));
+
+    // standardized box plots
+    const traces = numeric.slice(0, 30).map(c => ({
+      type: 'box', name: c.name, y: c.std ? c.values.map(v => (v - c.mean) / c.std) : c.values,
+      boxpoints: 'suspectedoutliers', marker: { color: '#38bdf8', outliercolor: '#dc2626', size: 3 },
+      line: { width: 1.4 }, hoverinfo: 'y+name'
+    }));
+    const p = plotBox(Math.max(340, 60 + traces.length * 4));
+    c3.appendChild(p);
+    draw(p, traces, layoutBase('Standardised box plots (z-units) — red points are suspected outliers', { xaxis: { tickangle: -35 }, yaxis: { title: 'z-score' } }));
+    c3.appendChild(note('Values are z-standardised so every column shares one axis. Compare spread and tail behaviour across columns at a glance.'));
+    root.appendChild(c3);
+  }
+
+  /* structural issues */
+  const c4 = card('Structural checks', 'Things that usually break a model before it starts');
+  const issues = [];
+  S.columns.filter(c => c.constant).forEach(c => issues.push([c.name, 'Constant / single value', 'Zero variance — it carries no information. Drop it.', 'bad']));
+  S.columns.filter(c => c.type === 'id').forEach(c => issues.push([c.name, 'Identifier-like', 'Unique in every row. Exclude from features or the model will memorise it.', 'warn']));
+  S.columns.filter(c => c.type === 'categorical' && c.unique > 50).forEach(c => issues.push([c.name, 'High cardinality (' + c.unique + ')', 'One-hot encoding explodes here — use target/frequency encoding or grouping.', 'warn']));
+  S.columns.filter(c => c.missingPct > .5).forEach(c => issues.push([c.name, 'Mostly empty (' + pct(c.missingPct) + ')', 'Imputation would invent most of this column. Usually better to drop.', 'bad']));
+  S.columns.filter(c => NUMERIC_KINDS.has(c.type) && c.values && c.values.length && c.zeros / c.values.length > .8).forEach(c => issues.push([c.name, 'Zero-inflated (' + pct(c.zeros / c.values.length) + ' zeros)', 'Consider a two-part model or a zero indicator flag.', 'warn']));
+  S.columns.filter(c => Math.abs(c.skew || 0) > 2).forEach(c => issues.push([c.name, 'Strong skew (' + fmt(c.skew, 2) + ')', 'Try log1p, square-root or Yeo-Johnson before linear models.', 'warn']));
+  if (!issues.length) c4.appendChild(note('No structural problems found — no constant columns, no runaway cardinality, no near-empty features.', 'good'));
+  else c4.appendChild(table(['Column', 'Issue', 'What to do', ''], issues.map(i => [i[0], i[1], i[2], { html: badge(i[3] === 'bad' ? 'high' : 'medium', i[3]) }]), { stickyFirst: true }));
+  root.appendChild(c4);
+}
+function outCell(n, total) {
+  if (!n) return '<span class="flag-ok">0</span>';
+  const p = n / total;
+  const cls = p > .1 ? 'flag-bad' : 'flag-warn';
+  return '<span class="' + cls + '">' + n.toLocaleString() + ' <small>(' + pct(p) + ')</small></span>';
+}
+function suggestImpute(c) {
+  if (c.missingPct > .5) return 'Drop the column, or keep only a “was missing” flag';
+  if (NUMERIC_KINDS.has(c.type)) return Math.abs(c.skew || 0) > 1 ? 'Median (skewed distribution)' : 'Mean or median; KNN if the nulls cluster';
+  if (c.type === 'datetime') return 'Forward-fill if ordered, otherwise drop the row';
+  return 'Mode, or an explicit "Unknown" category';
+}
+function findDuplicateColumns() {
+  const pairs = [], sig = new Map();
+  S.columns.forEach(c => {
+    const k = c.raw.map(v => (isNullish(v) ? '\u0000' : v instanceof Date ? v.getTime() : String(v).trim())).join('\u001f');
+    if (sig.has(k)) pairs.push([sig.get(k), c.name]); else sig.set(k, c.name);
+  });
+  return pairs;
+}
+function duplicateGroups() {
+  const m = new Map();
+  S.body.forEach(r => {
+    const k = r.map(v => (isNullish(v) ? '\u0000' : v instanceof Date ? v.getTime() : String(v))).join('\u001f');
+    if (!m.has(k)) m.set(k, { count: 0, sample: r });
+    m.get(k).count++;
+  });
+  return Array.from(m.values()).filter(g => g.count > 1).sort((a, b) => b.count - a.count);
+}
+
+/* ---------- 7.3 DISTRIBUTIONS ---------- */
+function renderDistributions(root) {
+  const numeric = S.columns.filter(c => NUMERIC_KINDS.has(c.type) && c.values && c.values.length > 1);
+  const cats = S.columns.filter(c => (c.type === 'categorical' || c.type === 'boolean') && c.counts && c.counts.length);
+
+  if (numeric.length) {
+    const c1 = card('Numeric distributions', 'Histogram with a box plot above each — shape, spread and outliers together');
+    const grid = el('div', 'plotgrid');
+    numeric.slice(0, 36).forEach(c => {
+      const cell = el('div', 'plotcell');
+      const head = el('div', 'plotcell__head');
+      head.innerHTML = '<strong>' + esc(c.name) + '</strong><span>' + shapeLabel(c) + '</span>';
+      cell.appendChild(head);
+      const p = plotBox(300);
+      cell.appendChild(p);
+      const lay = layoutBase('', {
+        margin: { l: 52, r: 16, t: 10, b: 40 },
+        xaxis: { gridcolor: cssVar('--grid'), title: '' },
+        yaxis: { domain: [0, 0.76], title: 'count', gridcolor: cssVar('--grid') },
+        yaxis2: { domain: [0.82, 1], showticklabels: false, gridcolor: 'rgba(0,0,0,0)', zeroline: false },
+        shapes: [
+          vline(c.mean, '#f59e0b', 'mean'), vline(c.median, '#38bdf8', 'median')
+        ],
+        showlegend: true, legend: { orientation: 'h', y: -0.24, font: { size: 9 } }
+      });
+      draw(p, [
+        { type: 'histogram', x: c.values, marker: { color: 'rgba(56,189,248,.62)', line: { color: 'rgba(56,189,248,.95)', width: 1 } }, name: 'count', nbinsx: Math.min(60, Math.max(12, Math.ceil(Math.sqrt(c.values.length)))), hovertemplate: 'bin %{x}<br>%{y} rows<extra></extra>' },
+        { type: 'box', x: c.values, yaxis: 'y2', marker: { color: '#f59e0b', size: 3, outliercolor: '#dc2626' }, boxpoints: 'suspectedoutliers', name: 'spread', hoverinfo: 'x' }
+      ], lay);
+      const meta = el('div', 'plotcell__meta');
+      meta.innerHTML = ['μ ' + fmt(c.mean), 'σ ' + fmt(c.std), 'med ' + fmt(c.median),
+        'skew ' + fmt(c.skew, 2), 'kurt ' + fmt(c.kurt, 2),
+        c.jb ? 'JB p ' + fmt(c.jb.p, 3) : ''].filter(Boolean).map(s => '<span>' + s + '</span>').join('');
+      cell.appendChild(meta);
+      grid.appendChild(cell);
+    });
+    c1.appendChild(grid);
+    if (numeric.length > 36) c1.appendChild(note('Showing the first 36 of ' + numeric.length + ' numeric columns.'));
+    c1.appendChild(note('Amber line = mean, blue line = median. When they separate, the column is skewed and the mean is being dragged by the tail. Jarque–Bera p < 0.05 rejects normality.'));
+    root.appendChild(c1);
+  }
+
+  if (cats.length) {
+    const c2 = card('Categorical frequencies', 'Top levels per column, with the long tail collapsed');
+    const grid = el('div', 'plotgrid');
+    cats.slice(0, 24).forEach(c => {
+      const cell = el('div', 'plotcell');
+      const head = el('div', 'plotcell__head');
+      head.innerHTML = '<strong>' + esc(c.name) + '</strong><span>' + c.unique + ' levels</span>';
+      cell.appendChild(head);
+      const top = c.counts.slice(0, 12);
+      const restCount = c.counts.slice(12).reduce((s, p) => s + p[1], 0);
+      const labels = top.map(p => p[0]).concat(restCount ? ['⋯ ' + (c.counts.length - 12) + ' more'] : []);
+      const vals = top.map(p => p[1]).concat(restCount ? [restCount] : []);
+      const p = plotBox(Math.max(260, labels.length * 24 + 80));
+      cell.appendChild(p);
+      draw(p, [{
+        type: 'bar', orientation: 'h', x: vals, y: labels,
+        marker: { color: labels.map((l, i) => (i === labels.length - 1 && restCount) ? 'rgba(148,163,184,.6)' : 'rgba(45,212,191,' + (0.95 - i * 0.05) + ')') },
+        text: vals.map(v => pct(v / c.present)), textposition: 'outside',
+        hovertemplate: '%{y}<br>%{x} rows (%{text})<extra></extra>', name: 'count'
+      }], layoutBase('', { margin: { l: 10, r: 50, t: 8, b: 34 }, yaxis: { autorange: 'reversed', automargin: true }, xaxis: { title: 'rows' } }));
+      const dom = c.modeFreq / c.present;
+      const meta = el('div', 'plotcell__meta');
+      meta.innerHTML = '<span>mode ' + esc(String(c.mode)) + '</span><span>dominance ' + pct(dom) + '</span>' +
+        (dom > .95 ? '<span class="flag-bad">near-constant</span>' : c.unique > 50 ? '<span class="flag-warn">high cardinality</span>' : '');
+      cell.appendChild(meta);
+      grid.appendChild(cell);
+    });
+    c2.appendChild(grid);
+    root.appendChild(c2);
+  }
+
+  // datetime columns
+  const dts = S.columns.filter(c => c.type === 'datetime' && c.values && c.values.length);
+  if (dts.length) {
+    const c3 = card('Date coverage', 'How records are spread over time');
+    dts.slice(0, 6).forEach(c => {
+      const p = plotBox(260);
+      c3.appendChild(el('h4', 'subhead', esc(c.name) + ' — ' + c.min.toISOString().slice(0, 10) + ' → ' + c.max.toISOString().slice(0, 10)));
+      c3.appendChild(p);
+      draw(p, [{ type: 'histogram', x: c.dates.filter(Boolean), marker: { color: 'rgba(168,85,247,.7)' }, name: 'records', hovertemplate: '%{x}<br>%{y} records<extra></extra>' }],
+        layoutBase('', { xaxis: { title: 'date' }, yaxis: { title: 'records' } }));
+    });
+    root.appendChild(c3);
+  }
+}
+function shapeLabel(c) {
+  const s = c.skew;
+  if (s === undefined || isNaN(s)) return '';
+  if (Math.abs(s) < .5) return 'roughly symmetric';
+  if (s >= .5 && s < 1) return 'moderate right skew';
+  if (s >= 1) return 'strong right skew';
+  if (s <= -1) return 'strong left skew';
+  return 'moderate left skew';
+}
+function vline(x, color, name) {
+  return { type: 'line', x0: x, x1: x, yref: 'paper', y0: 0, y1: 0.76, line: { color, width: 1.6, dash: 'dot' } };
+}
+
+/* ---------- 7.4 CORRELATION ---------- */
+function renderCorrelation(root) {
+  const numeric = S.columns.filter(c => NUMERIC_KINDS.has(c.type) && c.values && c.values.length > 2 && !c.constant);
+  if (numeric.length < 2) {
+    const cc = card('Correlation matrix', '');
+    cc.appendChild(note('At least two numeric columns are needed for a correlation matrix. This dataset has ' + numeric.length + '.', 'warn'));
+    root.appendChild(cc);
+    return null;
+  }
+  // complete-case matrix
+  const names = numeric.map(c => c.name);
+  const n = numeric.length;
+  const method = $('#corrMethod') ? $('#corrMethod').value : 'pearson';
+
+  const build = (fn) => {
+    const M = Array.from({ length: n }, () => new Array(n).fill(NaN));
+    for (let i = 0; i < n; i++) {
+      M[i][i] = 1;
+      for (let j = i + 1; j < n; j++) {
+        const a = [], b = [];
+        for (let k = 0; k < S.nRows; k++) {
+          const x = numeric[i].num[k], y = numeric[j].num[k];
+          if (x !== null && y !== null && isFinite(x) && isFinite(y)) { a.push(x); b.push(y); }
+        }
+        const r = a.length > 2 ? fn(a, b) : NaN;
+        M[i][j] = M[j][i] = r;
+      }
+    }
+    return M;
+  };
+  const P = build(pearson);
+  const SPR = build(spearman);
+  const M = method === 'spearman' ? SPR : P;
+
+  const c1 = card('Correlation matrix', (method === 'spearman' ? 'Spearman rank' : 'Pearson linear') + ' correlation on complete pairs');
+  const toggle = el('div', 'inline-toggle');
+  toggle.innerHTML = '<label>Method</label>';
+  const sel = el('select', 'mini-select');
+  sel.innerHTML = '<option value="pearson">Pearson (linear)</option><option value="spearman">Spearman (monotonic / rank)</option>';
+  sel.value = method;
+  sel.id = 'corrMethod';
+  sel.onchange = () => { const p = root; p.innerHTML = ''; renderCorrelation(p); };
+  toggle.appendChild(sel);
+  c1.querySelector('.card__head').appendChild(toggle);
+
+  const h = Math.max(380, Math.min(900, n * 34 + 160));
+  const p1 = plotBox(h);
+  c1.appendChild(p1);
+  draw(p1, [{
+    type: 'heatmap', z: M, x: names, y: names,
+    colorscale: CORR_SCALE, zmin: -1, zmax: 1, zmid: 0,
+    xgap: 2, ygap: 2,
+    colorbar: { title: { text: 'r', side: 'right' }, thickness: 14, tickvals: [-1, -.5, 0, .5, 1], outlinewidth: 0 },
+    hovertemplate: '%{y} vs %{x}<br>r = %{z:.3f}<extra></extra>',
+    text: n <= 18 ? M.map(r => r.map(v => (isNaN(v) ? '' : v.toFixed(2)))) : undefined,
+    texttemplate: n <= 18 ? '%{text}' : undefined,
+    textfont: { size: n <= 12 ? 10 : 8, family: 'IBM Plex Mono, monospace' }
+  }], layoutBase('', { xaxis: { tickangle: -45, automargin: true }, yaxis: { autorange: 'reversed', automargin: true }, margin: { l: 90, r: 20, t: 16, b: 90 } }));
+  c1.appendChild(note('Deep red = strong negative (r → −1) · neutral grey = no linear relationship · deep green = strong positive (r → +1). Pearson catches straight-line links; Spearman catches any monotonic link and shrugs off outliers.'));
+  root.appendChild(c1);
+
+  /* strongest pairs */
+  const pairs = [];
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (!isNaN(M[i][j])) pairs.push({ a: names[i], b: names[j], r: M[i][j], rp: P[i][j], rs: SPR[i][j] });
+  pairs.sort((x, y) => Math.abs(y.r) - Math.abs(x.r));
+  const c2 = card('Strongest relationships', 'Ranked by |r| — the top of this list is where your signal and your redundancy both live');
+  const rows = pairs.slice(0, 25).map(p => [
+    p.a, p.b,
+    { html: '<span class="corrpill" style="background:' + corrColor(p.rp) + '">' + p.rp.toFixed(3) + '</span>' },
+    { html: '<span class="corrpill" style="background:' + corrColor(p.rs) + '">' + p.rs.toFixed(3) + '</span>' },
+    fmt(p.r * p.r, 3),
+    { html: strengthBadge(Math.abs(p.r)) }
+  ]);
+  c2.appendChild(table(['Column A', 'Column B', 'Pearson r', 'Spearman ρ', 'r²', 'Strength'], rows, { stickyFirst: true }));
+  const nonlin = pairs.filter(p => Math.abs(p.rs) - Math.abs(p.rp) > 0.15);
+  if (nonlin.length) c2.appendChild(note('Non-linear signal detected: ' + nonlin.slice(0, 5).map(p => p.a + '↔' + p.b).join(', ') + ' — Spearman is much higher than Pearson, so the relationship is monotonic but curved. Tree models will pick this up; linear regression will not without a transform.', 'warn'));
+  root.appendChild(c2);
+
+  /* scatter matrix for top numeric */
+  if (n >= 2) {
+    const topCols = numeric.slice().sort((a, b) => (b.std / (Math.abs(b.mean) || 1)) - (a.std / (Math.abs(a.mean) || 1))).slice(0, Math.min(6, n));
+    const c3 = card('Pairwise scatter matrix', 'Up to six columns — look for curves, clusters and fences');
+    const p3 = plotBox(Math.max(420, topCols.length * 120));
+    c3.appendChild(p3);
+    draw(p3, [{
+      type: 'splom',
+      dimensions: topCols.map(c => ({ label: c.name.length > 14 ? c.name.slice(0, 13) + '…' : c.name, values: c.num.map(v => (v === null ? null : v)) })),
+      marker: { color: 'rgba(56,189,248,.45)', size: 3.5, line: { width: 0 } },
+      diagonal: { visible: false }, showupperhalf: false, name: 'observations'
+    }], layoutBase('', { margin: { l: 70, r: 20, t: 20, b: 60 }, dragmode: 'select' }));
+    root.appendChild(c3);
+  }
+
+  return { M, names, numeric, P };
+}
+function strengthBadge(a) {
+  if (a >= .9) return badge('near-duplicate', 'bad');
+  if (a >= .7) return badge('strong', 'warn');
+  if (a >= .4) return badge('moderate', 'ok');
+  if (a >= .2) return badge('weak', 'cat');
+  return badge('negligible', 'id');
+}
+
+/* ---------- 7.5 MULTICOLLINEARITY ---------- */
+function renderMulticollinearity(root, corr) {
+  if (!corr) { root.appendChild(note('Needs at least two numeric columns.', 'warn')); return; }
+  const { M, names } = corr;
+  const c1 = card('Variance Inflation Factors', 'VIF = 1 / (1 − R²) from regressing each feature on all the others');
+
+  // drop rows/cols with NaN
+  const ok = names.map((_, i) => M[i].every(v => !isNaN(v)));
+  const idx = names.map((_, i) => i).filter(i => ok[i]);
+  const R = idx.map(i => idx.map(j => M[i][j]));
+  const nm = idx.map(i => names[i]);
+
+  const inv = invert(R);
+  let rows;
+  if (!inv) {
+    c1.appendChild(note('The correlation matrix is singular — at least one column is an exact linear combination of the others (perfect multicollinearity). VIF is infinite for those columns. Look at the near-duplicate pairs below and drop one of each.', 'bad'));
+    rows = [];
+  } else {
+    const vifs = nm.map((n, i) => ({ name: n, vif: inv[i][i], r2: 1 - 1 / inv[i][i] }));
+    vifs.sort((a, b) => b.vif - a.vif);
+    rows = vifs.map(v => [v.name, { html: vifCell(v.vif) }, fmt(v.r2, 3), { html: vifVerdict(v.vif) }]);
+    c1.appendChild(table(['Column', 'VIF', 'R² vs. rest', 'Reading'], rows, { stickyFirst: true }));
+
+    const p = plotBox(Math.max(280, vifs.length * 26 + 90));
+    c1.appendChild(p);
+    draw(p, [{
+      type: 'bar', orientation: 'h', y: vifs.map(v => v.name), x: vifs.map(v => Math.min(v.vif, 60)),
+      text: vifs.map(v => (v.vif > 60 ? '>60' : v.vif.toFixed(1))), textposition: 'outside',
+      marker: { color: vifs.map(v => (v.vif >= 10 ? '#dc2626' : v.vif >= 5 ? '#f59e0b' : '#10b981')) },
+      hovertemplate: '%{y}<br>VIF %{text}<extra></extra>', name: 'VIF'
+    }], layoutBase('', {
+      xaxis: { title: 'VIF (clipped at 60)' }, yaxis: { autorange: 'reversed' },
+      shapes: [
+        { type: 'line', x0: 5, x1: 5, yref: 'paper', y0: 0, y1: 1, line: { color: '#f59e0b', dash: 'dot', width: 1.4 } },
+        { type: 'line', x0: 10, x1: 10, yref: 'paper', y0: 0, y1: 1, line: { color: '#dc2626', dash: 'dot', width: 1.4 } }
+      ]
+    }));
+    c1.appendChild(note('Rule of thumb: VIF under 5 is fine, 5–10 is worth watching, above 10 means the coefficient for that column is unstable and its sign may flip on a different sample. Amber line = 5, red line = 10.'));
+  }
+  root.appendChild(c1);
+
+  // condition index
+  const eig = eigenvaluesSym(R);
+  if (eig.length && eig[eig.length - 1] > 0) {
+    const cond = Math.sqrt(eig[0] / eig[eig.length - 1]);
+    const c2 = card('Condition number', 'Overall conditioning of the feature matrix');
+    const tiles = el('div', 'tiles');
+    tiles.appendChild(statTile('Condition number κ', fmt(cond, 1), cond > 30 ? 'bad' : cond > 15 ? 'warn' : 'ok',
+      cond > 30 ? 'severe collinearity' : cond > 15 ? 'moderate collinearity' : 'well conditioned'));
+    tiles.appendChild(statTile('Largest eigenvalue', fmt(eig[0], 3)));
+    tiles.appendChild(statTile('Smallest eigenvalue', fmt(eig[eig.length - 1], 4)));
+    tiles.appendChild(statTile('Effective dimensions', eig.filter(e => e > 0.05).length, 'ok', 'components above λ = 0.05'));
+    c2.appendChild(tiles);
+    const p = plotBox(280);
+    c2.appendChild(p);
+    const cum = []; let acc = 0; const tot = eig.reduce((s, v) => s + v, 0);
+    eig.forEach(v => { acc += v; cum.push(acc / tot * 100); });
+    draw(p, [
+      { type: 'bar', x: eig.map((_, i) => 'PC' + (i + 1)), y: eig, name: 'eigenvalue', marker: { color: 'rgba(56,189,248,.75)' }, hovertemplate: '%{x}<br>λ = %{y:.3f}<extra></extra>' },
+      { type: 'scatter', mode: 'lines+markers', x: eig.map((_, i) => 'PC' + (i + 1)), y: cum, yaxis: 'y2', name: 'cumulative variance %', line: { color: '#f59e0b', width: 2 }, hovertemplate: '%{x}<br>%{y:.1f}% cumulative<extra></extra>' }
+    ], layoutBase('', {
+      showlegend: true, yaxis: { title: 'eigenvalue' },
+      yaxis2: { title: 'cumulative %', overlaying: 'y', side: 'right', range: [0, 105], gridcolor: 'rgba(0,0,0,0)' }
+    }));
+    c2.appendChild(note('A steep drop-off means a handful of components carry the whole dataset — PCA or feature selection would compress it with little loss.'));
+    root.appendChild(c2);
+  }
+
+  // redundant pairs
+  const red = [];
+  for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) if (Math.abs(M[i][j]) >= 0.8) red.push([names[i], names[j], M[i][j]]);
+  const c3 = card('Redundant pairs (|r| ≥ 0.8)', 'Candidates for dropping one side');
+  if (!red.length) c3.appendChild(note('No pair of numeric columns is correlated at 0.8 or above. Collinearity is not a concern here.', 'good'));
+  else {
+    red.sort((a, b) => Math.abs(b[2]) - Math.abs(a[2]));
+    c3.appendChild(table(['Column A', 'Column B', 'r', 'Suggestion'], red.map(p => [p[0], p[1],
+    { html: '<span class="corrpill" style="background:' + corrColor(p[2]) + '">' + p[2].toFixed(3) + '</span>' },
+      'Keep the one with better business meaning or fewer nulls; drop or combine the other'])));
+  }
+  root.appendChild(c3);
+}
+function vifCell(v) {
+  const cls = v >= 10 ? 'flag-bad' : v >= 5 ? 'flag-warn' : 'flag-ok';
+  return '<span class="' + cls + '">' + (v > 1000 ? '>1000' : fmt(v, 2)) + '</span>';
+}
+function vifVerdict(v) {
+  if (v >= 10) return badge('drop or combine', 'bad');
+  if (v >= 5) return badge('watch', 'warn');
+  return badge('independent', 'ok');
+}
+
+/* ---------- 7.6 RELATIONSHIPS (no target) ---------- */
+function renderRelationships(root) {
+  const c = card('Unsupervised profile', 'No target selected — here is how the columns relate to each other');
+  const numeric = S.columns.filter(c2 => NUMERIC_KINDS.has(c2.type) && c2.values && c2.values.length > 2 && !c2.constant);
+  const cats = S.columns.filter(c2 => c2.type === 'categorical' && c2.unique > 1 && c2.unique <= 12);
+
+  if (numeric.length >= 2 && cats.length) {
+    const cc = cats[0], nn = numeric[0];
+    const p = plotBox(360);
+    c.appendChild(el('h4', 'subhead', 'Distribution of ' + nn.name + ' across ' + cc.name));
+    c.appendChild(p);
+    const traces = cc.counts.slice(0, 10).map(pair => ({
+      type: 'violin', name: String(pair[0]), y: nn.num.filter((v, i) => v !== null && cc.cats[i] === pair[0]),
+      box: { visible: true }, meanline: { visible: true }, points: false, hoverinfo: 'y+name'
+    }));
+    draw(p, traces, layoutBase('', { showlegend: true, yaxis: { title: nn.name }, xaxis: { title: cc.name } }));
+  }
+  c.appendChild(note('Pick a target column and a problem type in the sidebar to unlock target-driven analysis: class balance, feature importance ranking, or time-series decomposition.'));
+  root.appendChild(c);
+}
+
+/* ---------- 7.7 REGRESSION ---------- */
+function renderRegression(root) {
+  const t = S.columns.find(c => c.name === S.target);
+  if (!t) { root.appendChild(note('Select a target column in the sidebar to run the regression profile.', 'warn')); return; }
+  if (!NUMERIC_KINDS.has(t.type)) { root.appendChild(note('“' + t.name + '” is not numeric — pick a numeric target for a regression problem, or switch the problem type to classification.', 'bad')); return; }
+
+  const c1 = card('Target: ' + t.name, 'Distribution and shape of what you are predicting');
+  const tiles = el('div', 'tiles');
+  [['Mean', fmt(t.mean)], ['Std dev', fmt(t.std)], ['Median', fmt(t.median)], ['Min', fmt(t.min)], ['Max', fmt(t.max)],
+  ['Skew', fmt(t.skew, 2), Math.abs(t.skew) > 1 ? 'warn' : 'ok'], ['Excess kurtosis', fmt(t.kurt, 2)],
+  ['Missing', t.missing + ' (' + pct(t.missingPct) + ')', t.missing ? 'bad' : 'ok', t.missing ? 'those rows cannot be trained on' : ''],
+  ['Outliers (1.5 IQR)', t.outliers + ' (' + pct(t.outliers / t.values.length) + ')', t.outliers ? 'warn' : 'ok']
+  ].forEach(x => tiles.appendChild(statTile(x[0], x[1], x[2], x[3])));
+  c1.appendChild(tiles);
+
+  const p1 = plotBox(340);
+  c1.appendChild(p1);
+  const logv = t.min > 0 ? t.values.map(v => Math.log(v)) : null;
+  const traces = [{ type: 'histogram', x: t.values, name: 'raw target', marker: { color: 'rgba(56,189,248,.65)' }, nbinsx: 45 }];
+  if (logv) traces.push({ type: 'histogram', x: logv, name: 'log(target)', marker: { color: 'rgba(245,158,11,.55)' }, nbinsx: 45, visible: 'legendonly' });
+  draw(p1, traces, layoutBase('', { showlegend: true, barmode: 'overlay', xaxis: { title: t.name }, yaxis: { title: 'count' } }));
+  if (logv) c1.appendChild(note('Toggle “log(target)” in the legend to see whether a log transform straightens the distribution — worth it when skew is above ~1.'));
+  root.appendChild(c1);
+
+  // Q-Q plot
+  const c2 = card('Normality of the target', 'Q–Q plot against a normal distribution');
+  const p2 = plotBox(340);
+  c2.appendChild(p2);
+  const qq = qqPoints(t.sorted);
+  draw(p2, [
+    { type: 'scatter', mode: 'markers', x: qq.theo, y: qq.samp, name: 'observed quantiles', marker: { color: 'rgba(56,189,248,.7)', size: 4 } },
+    { type: 'scatter', mode: 'lines', x: [qq.theo[0], qq.theo[qq.theo.length - 1]], y: [qq.line(qq.theo[0]), qq.line(qq.theo[qq.theo.length - 1])], name: 'perfect normal', line: { color: '#f59e0b', width: 2, dash: 'dash' } }
+  ], layoutBase('', { showlegend: true, xaxis: { title: 'theoretical quantiles' }, yaxis: { title: 'sample quantiles' } }));
+  c2.appendChild(note(t.jb ? 'Jarque–Bera statistic ' + fmt(t.jb.jb, 2) + ', p ≈ ' + fmt(t.jb.p, 4) + (t.jb.p < 0.05 ? ' — normality rejected. Linear models will still fit, but prediction intervals and OLS p-values become unreliable.' : ' — consistent with a normal distribution.') : ''));
+  root.appendChild(c2);
+
+  // feature ranking
+  const feats = S.columns.filter(c => c !== t && NUMERIC_KINDS.has(c.type) && !c.constant && c.values.length > 2);
+  if (feats.length) {
+    const ranked = feats.map(f => {
+      const a = [], b = [];
+      for (let i = 0; i < S.nRows; i++) { const x = f.num[i], y = t.num[i]; if (x !== null && y !== null && isFinite(x) && isFinite(y)) { a.push(x); b.push(y); } }
+      return { name: f.name, col: f, r: a.length > 2 ? pearson(a, b) : NaN, rs: a.length > 2 ? spearman(a, b) : NaN, n: a.length };
+    }).filter(x => !isNaN(x.r)).sort((x, y) => Math.abs(y.r) - Math.abs(x.r));
+
+    const c3 = card('Feature → target strength', 'Every numeric feature ranked by its correlation with ' + t.name);
+    const p3 = plotBox(Math.max(300, ranked.length * 26 + 100));
+    c3.appendChild(p3);
+    draw(p3, [{
+      type: 'bar', orientation: 'h', y: ranked.map(x => x.name), x: ranked.map(x => x.r),
+      marker: { color: ranked.map(x => (x.r < 0 ? 'rgba(220,38,38,' + (0.25 + Math.abs(x.r) * 0.7) + ')' : 'rgba(16,185,129,' + (0.25 + Math.abs(x.r) * 0.7) + ')')) },
+      text: ranked.map(x => x.r.toFixed(3)), textposition: 'outside',
+      hovertemplate: '%{y}<br>r = %{x:.3f}<extra></extra>', name: 'Pearson r'
+    }], layoutBase('', { xaxis: { title: 'Pearson r with ' + t.name, range: [-1.15, 1.15] }, yaxis: { autorange: 'reversed' } }));
+    c3.appendChild(table(['Feature', 'Pearson r', 'Spearman ρ', 'r² (variance explained)', 'Usable rows', 'Signal'],
+      ranked.map(x => [x.name, { html: '<span class="corrpill" style="background:' + corrColor(x.r) + '">' + x.r.toFixed(3) + '</span>' },
+      fmt(x.rs, 3), pct(x.r * x.r), x.n.toLocaleString(), { html: strengthBadge(Math.abs(x.r)) }]), { stickyFirst: true }));
+    root.appendChild(c3);
+
+    // top scatters with fit line
+    const c4 = card('Top predictors vs target', 'With a least-squares line and its R²');
+    const grid = el('div', 'plotgrid');
+    ranked.slice(0, 6).forEach(x => {
+      const cell = el('div', 'plotcell');
+      cell.appendChild(el('div', 'plotcell__head', '<strong>' + esc(x.name) + '</strong><span>r = ' + x.r.toFixed(3) + '</span>'));
+      const a = [], b = [];
+      for (let i = 0; i < S.nRows; i++) { const xx = x.col.num[i], yy = t.num[i]; if (xx !== null && yy !== null && isFinite(xx) && isFinite(yy)) { a.push(xx); b.push(yy); } }
+      const fit = linfit(a, b);
+      const xs = [Math.min.apply(null, a), Math.max.apply(null, a)];
+      const p = plotBox(300);
+      cell.appendChild(p);
+      draw(p, [
+        { type: 'scattergl', mode: 'markers', x: a, y: b, name: 'observations', marker: { color: 'rgba(56,189,248,.4)', size: 4 }, hovertemplate: x.name + ' %{x}<br>' + t.name + ' %{y}<extra></extra>' },
+        { type: 'scatter', mode: 'lines', x: xs, y: xs.map(v => fit.m * v + fit.b), name: 'OLS fit', line: { color: '#f59e0b', width: 2 } }
+      ], layoutBase('', { showlegend: true, margin: { l: 56, r: 16, t: 10, b: 44 }, xaxis: { title: x.name }, yaxis: { title: t.name } }));
+      cell.appendChild(el('div', 'plotcell__meta', '<span>y = ' + fmt(fit.m, 4) + '·x + ' + fmt(fit.b, 4) + '</span><span>R² ' + fmt(x.r * x.r, 3) + '</span>'));
+      grid.appendChild(cell);
+    });
+    c4.appendChild(grid);
+    root.appendChild(c4);
+  }
+
+  // categorical drivers
+  const cats = S.columns.filter(c => c.type === 'categorical' && c.unique > 1 && c.unique <= 15);
+  if (cats.length) {
+    const c5 = card('Categorical drivers', 'Target distribution within each level — a wide spread between boxes means the column matters');
+    const grid = el('div', 'plotgrid');
+    cats.slice(0, 6).forEach(cc => {
+      const cell = el('div', 'plotcell');
+      const levels = cc.counts.slice(0, 12);
+      const groups = levels.map(pair => t.num.filter((v, i) => v !== null && cc.cats[i] === pair[0]));
+      const etaSq = etaSquared(groups);
+      cell.appendChild(el('div', 'plotcell__head', '<strong>' + esc(cc.name) + '</strong><span>η² = ' + fmt(etaSq, 3) + '</span>'));
+      const p = plotBox(300);
+      cell.appendChild(p);
+      draw(p, levels.map((pair, i) => ({ type: 'box', name: String(pair[0]), y: groups[i], boxmean: true, marker: { size: 3 }, hoverinfo: 'y+name' })),
+        layoutBase('', { showlegend: false, margin: { l: 56, r: 16, t: 10, b: 60 }, xaxis: { tickangle: -30 }, yaxis: { title: t.name } }));
+      cell.appendChild(el('div', 'plotcell__meta', '<span>' + (etaSq > .14 ? 'large effect' : etaSq > .06 ? 'medium effect' : 'small effect') + '</span><span>' + levels.length + ' levels shown</span>'));
+      grid.appendChild(cell);
+    });
+    c5.appendChild(grid);
+    c5.appendChild(note('η² (eta squared) is the share of target variance explained by the category: 0.01 small, 0.06 medium, 0.14 large.'));
+    root.appendChild(c5);
+  }
+}
+function linfit(x, y) {
+  const mx = mean(x), my = mean(y);
+  let num = 0, den = 0;
+  for (let i = 0; i < x.length; i++) { num += (x[i] - mx) * (y[i] - my); den += (x[i] - mx) * (x[i] - mx); }
+  const m = den ? num / den : 0;
+  return { m, b: my - m * mx };
+}
+function etaSquared(groups) {
+  const all = [].concat.apply([], groups);
+  if (all.length < 2) return NaN;
+  const gm = mean(all);
+  let ssb = 0, sst = 0;
+  groups.forEach(g => { if (g.length) { const m = mean(g); ssb += g.length * (m - gm) * (m - gm); } });
+  for (const v of all) sst += (v - gm) * (v - gm);
+  return sst ? ssb / sst : 0;
+}
+function normInv(p) { // Acklam approximation
+  const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+  const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
+  const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+  const pl = 0.02425;
+  let q, r;
+  if (p < pl) { q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  if (p > 1 - pl) { q = Math.sqrt(-2 * Math.log(1 - p)); return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  q = p - 0.5; r = q * q;
+  return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+}
+function qqPoints(sorted) {
+  const n = sorted.length;
+  const step = Math.max(1, Math.floor(n / 800));
+  const theo = [], samp = [];
+  for (let i = 0; i < n; i += step) { theo.push(normInv((i + 0.5) / n)); samp.push(sorted[i]); }
+  const m = mean(samp), s = std(samp, m);
+  return { theo, samp, line: x => m + s * x };
+}
+
+/* ---------- 7.8 CLASSIFICATION ---------- */
+function renderClassification(root) {
+  const t = S.columns.find(c => c.name === S.target);
+  if (!t) { root.appendChild(note('Select a target column in the sidebar to run the classification profile.', 'warn')); return; }
+  const labels = t.cats ? t.cats : t.num.map(v => (v === null ? null : String(v)));
+  const counts = new Map();
+  labels.forEach(v => { if (v !== null) counts.set(v, (counts.get(v) || 0) + 1); });
+  const cls = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  const total = cls.reduce((s, p) => s + p[1], 0);
+
+  if (cls.length > 30) { root.appendChild(note('“' + t.name + '” has ' + cls.length + ' distinct values — that looks like a regression target, not a class label. Switch the problem type or pick another column.', 'bad')); return; }
+
+  const c1 = card('Class balance — ' + t.name, cls.length + ' classes across ' + total.toLocaleString() + ' labelled rows');
+  const imb = cls[0][1] / cls[cls.length - 1][1];
+  const tiles = el('div', 'tiles');
+  tiles.appendChild(statTile('Classes', cls.length));
+  tiles.appendChild(statTile('Majority class', esc(String(cls[0][0])), 'ok', pct(cls[0][1] / total) + ' of rows'));
+  tiles.appendChild(statTile('Minority class', esc(String(cls[cls.length - 1][0])), imb > 10 ? 'bad' : 'warn', pct(cls[cls.length - 1][1] / total) + ' of rows'));
+  tiles.appendChild(statTile('Imbalance ratio', imb.toFixed(1) + ':1', imb > 10 ? 'bad' : imb > 3 ? 'warn' : 'ok', imb > 10 ? 'severe — resample or weight' : imb > 3 ? 'moderate' : 'balanced'));
+  tiles.appendChild(statTile('Baseline accuracy', pct(cls[0][1] / total), 'warn', 'always predicting the majority class'));
+  tiles.appendChild(statTile('Unlabelled rows', (S.nRows - total).toLocaleString(), (S.nRows - total) ? 'warn' : 'ok'));
+  c1.appendChild(tiles);
+
+  const p1 = plotBox(Math.max(300, cls.length * 30 + 110));
+  c1.appendChild(p1);
+  draw(p1, [{
+    type: 'bar', x: cls.map(p => String(p[0])), y: cls.map(p => p[1]),
+    marker: { color: cls.map((p, i) => 'hsl(' + (172 + i * 26) % 360 + ' 70% 52%)' ) },
+    text: cls.map(p => pct(p[1] / total)), textposition: 'outside',
+    hovertemplate: '%{x}<br>%{y} rows (%{text})<extra></extra>', name: 'rows'
+  }], layoutBase('', { xaxis: { title: t.name, tickangle: cls.length > 6 ? -30 : 0 }, yaxis: { title: 'rows' } }));
+  if (imb > 3) c1.appendChild(note('Imbalance of ' + imb.toFixed(1) + ':1 — accuracy will be misleading. Use precision/recall, F1 or ROC-AUC, and consider class weights, SMOTE, or stratified splits.', 'warn'));
+  else c1.appendChild(note('Classes are reasonably balanced. Plain accuracy is a fair metric here, but still hold out a stratified test set.', 'good'));
+  root.appendChild(c1);
+
+  // numeric separability
+  const feats = S.columns.filter(c => c !== t && NUMERIC_KINDS.has(c.type) && !c.constant && c.values.length > 2);
+  const topClasses = cls.slice(0, 8).map(p => p[0]);
+  if (feats.length) {
+    const ranked = feats.map(f => {
+      const groups = topClasses.map(k => f.num.filter((v, i) => v !== null && isFinite(v) && labels[i] === k));
+      return { name: f.name, col: f, eta: etaSquared(groups.filter(g => g.length > 1)), groups };
+    }).filter(x => !isNaN(x.eta)).sort((a, b) => b.eta - a.eta);
+
+    const c2 = card('Feature separability', 'η² — how much of each feature’s variance is explained by the class label');
+    const p2 = plotBox(Math.max(300, ranked.length * 26 + 100));
+    c2.appendChild(p2);
+    draw(p2, [{
+      type: 'bar', orientation: 'h', y: ranked.map(x => x.name), x: ranked.map(x => x.eta),
+      marker: { color: ranked.map(x => 'rgba(16,185,129,' + (0.25 + Math.min(x.eta, 1) * 0.7) + ')') },
+      text: ranked.map(x => x.eta.toFixed(3)), textposition: 'outside',
+      hovertemplate: '%{y}<br>η² = %{x:.3f}<extra></extra>', name: 'η²'
+    }], layoutBase('', { xaxis: { title: 'η² (variance explained by class)' }, yaxis: { autorange: 'reversed' } }));
+    c2.appendChild(table(['Feature', 'η²', 'Effect size', 'Per-class means'],
+      ranked.map(x => [x.name, fmt(x.eta, 4), { html: badge(x.eta > .14 ? 'large' : x.eta > .06 ? 'medium' : x.eta > .01 ? 'small' : 'negligible', x.eta > .14 ? 'ok' : x.eta > .06 ? 'cat' : 'id') },
+      topClasses.map((k, i) => k + ': ' + fmt(x.groups[i].length ? mean(x.groups[i]) : NaN, 2)).join(' · ')]), { stickyFirst: true }));
+    root.appendChild(c2);
+
+    const c3 = card('Top separating features by class', 'Overlapping distributions mean the feature cannot tell the classes apart');
+    const grid = el('div', 'plotgrid');
+    ranked.slice(0, 6).forEach(x => {
+      const cell = el('div', 'plotcell');
+      cell.appendChild(el('div', 'plotcell__head', '<strong>' + esc(x.name) + '</strong><span>η² ' + x.eta.toFixed(3) + '</span>'));
+      const p = plotBox(300);
+      cell.appendChild(p);
+      draw(p, topClasses.map((k, i) => ({
+        type: 'violin', name: String(k), y: x.groups[i], box: { visible: true }, meanline: { visible: true }, points: false,
+        hoverinfo: 'y+name'
+      })), layoutBase('', { showlegend: true, margin: { l: 56, r: 16, t: 10, b: 30 }, yaxis: { title: x.name }, xaxis: { showticklabels: false } }));
+      grid.appendChild(cell);
+    });
+    c3.appendChild(grid);
+    root.appendChild(c3);
+  }
+
+  // categorical vs class — Cramér's V
+  const cats = S.columns.filter(c => c !== t && (c.type === 'categorical' || c.type === 'boolean') && c.unique > 1 && c.unique <= 30);
+  if (cats.length) {
+    const c4 = card('Categorical association — Cramér’s V', '0 = independent of the class, 1 = perfectly predicts it');
+    const rows = cats.map(cc => {
+      const v = cramersV(cc.cats, labels);
+      return { name: cc.name, v, col: cc };
+    }).sort((a, b) => b.v - a.v);
+    const p = plotBox(Math.max(280, rows.length * 26 + 90));
+    c4.appendChild(p);
+    draw(p, [{
+      type: 'bar', orientation: 'h', y: rows.map(r => r.name), x: rows.map(r => r.v),
+      marker: { color: rows.map(r => 'rgba(168,85,247,' + (0.25 + r.v * 0.7) + ')') },
+      text: rows.map(r => r.v.toFixed(3)), textposition: 'outside', hovertemplate: '%{y}<br>V = %{x:.3f}<extra></extra>', name: 'Cramér’s V'
+    }], layoutBase('', { xaxis: { title: 'Cramér’s V', range: [0, 1.1] }, yaxis: { autorange: 'reversed' } }));
+
+    // stacked composition for the strongest
+    if (rows.length) {
+      const best = rows[0].col;
+      const lv = best.counts.slice(0, 12).map(p2 => p2[0]);
+      const traces = topClasses.map((k, i) => ({
+        type: 'bar', name: String(k),
+        x: lv, y: lv.map(l => best.cats.filter((v, idx) => v === l && labels[idx] === k).length),
+        hovertemplate: '%{x} · ' + k + '<br>%{y} rows<extra></extra>'
+      }));
+      c4.appendChild(el('h4', 'subhead', 'Class mix inside ' + best.name));
+      const p2 = plotBox(320);
+      c4.appendChild(p2);
+      draw(p2, traces, layoutBase('', { barmode: 'stack', showlegend: true, xaxis: { title: best.name, tickangle: -30 }, yaxis: { title: 'rows' } }));
+    }
+    root.appendChild(c4);
+  }
+}
+function cramersV(a, b) {
+  const rows = new Map(), colsM = new Map(), joint = new Map();
+  let n = 0;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i], y = b[i];
+    if (x === null || y === null || x === undefined || y === undefined) continue;
+    n++;
+    rows.set(x, (rows.get(x) || 0) + 1);
+    colsM.set(y, (colsM.get(y) || 0) + 1);
+    const k = x + '\u001f' + y;
+    joint.set(k, (joint.get(k) || 0) + 1);
+  }
+  if (!n) return 0;
+  let chi2 = 0;
+  rows.forEach((rc, rk) => colsM.forEach((cc, ck) => {
+    const o = joint.get(rk + '\u001f' + ck) || 0;
+    const e = rc * cc / n;
+    if (e > 0) chi2 += (o - e) * (o - e) / e;
+  }));
+  const k = Math.min(rows.size, colsM.size);
+  return k > 1 ? Math.sqrt(chi2 / (n * (k - 1))) : 0;
+}
+
+/* ---------- 7.9 TIME SERIES ---------- */
+function renderTimeSeries(root) {
+  let dcol = S.columns.find(c => c.name === S.dateCol);
+  if (!dcol) dcol = S.columns.find(c => c.type === 'datetime');
+  const t = S.columns.find(c => c.name === S.target);
+  if (!t || !NUMERIC_KINDS.has(t.type)) { root.appendChild(note('Pick a numeric series to forecast in the sidebar.', 'bad')); return; }
+
+  // build ordered series
+  let pts = [];
+  if (dcol && dcol.type === 'datetime') {
+    for (let i = 0; i < S.nRows; i++) { const d = dcol.dates[i], v = t.num[i]; if (d && v !== null && isFinite(v)) pts.push([d.getTime(), v]); }
+    pts.sort((a, b) => a[0] - b[0]);
+  } else if (dcol && dcol.num) {
+    for (let i = 0; i < S.nRows; i++) { const d = dcol.num[i], v = t.num[i]; if (d !== null && v !== null && isFinite(v)) pts.push([d, v]); }
+    pts.sort((a, b) => a[0] - b[0]);
+  } else {
+    pts = t.num.map((v, i) => [i, v]).filter(p => p[1] !== null && isFinite(p[1]));
+  }
+  if (pts.length < 8) { root.appendChild(note('Not enough ordered observations to analyse as a time series.', 'bad')); return; }
+
+  const useDates = !!(dcol && dcol.type === 'datetime');
+  const xs = pts.map(p => (useDates ? new Date(p[0]) : p[0]));
+  const ys = pts.map(p => p[1]);
+
+  /* cadence */
+  let gaps = [];
+  for (let i = 1; i < pts.length; i++) gaps.push(pts[i][0] - pts[i - 1][0]);
+  gaps.sort((a, b) => a - b);
+  const medGap = quantile(gaps, .5);
+  const irregular = gaps.filter(g => Math.abs(g - medGap) > medGap * 0.5).length;
+  const dupTimes = pts.length - new Set(pts.map(p => p[0])).size;
+  let freq = 'unknown', period = 0;
+  if (useDates) {
+    const d = medGap / 86400000;
+    if (d < 0.05) { freq = 'sub-hourly'; period = 24; }
+    else if (d < 0.9) { freq = 'hourly'; period = 24; }
+    else if (d < 1.6) { freq = 'daily'; period = 7; }
+    else if (d < 8.5) { freq = 'weekly'; period = 52; }
+    else if (d < 45) { freq = 'monthly'; period = 12; }
+    else if (d < 100) { freq = 'quarterly'; period = 4; }
+    else { freq = 'yearly'; period = 0; }
+  }
+  const chosen = S.period === 'auto' ? period : parseInt(S.period, 10);
+
+  const c1 = card('Series profile — ' + t.name, (useDates ? 'Indexed by ' + dcol.name : 'Indexed by row order'));
+  const tiles = el('div', 'tiles');
+  tiles.appendChild(statTile('Observations', pts.length.toLocaleString()));
+  tiles.appendChild(statTile('Span', useDates ? new Date(pts[0][0]).toISOString().slice(0, 10) + ' → ' + new Date(pts[pts.length - 1][0]).toISOString().slice(0, 10) : pts[0][0] + ' → ' + pts[pts.length - 1][0]));
+  tiles.appendChild(statTile('Detected cadence', freq, 'ok', useDates ? 'median gap ' + fmt(medGap / 86400000, 2) + ' days' : ''));
+  tiles.appendChild(statTile('Irregular intervals', irregular.toLocaleString(), irregular ? 'warn' : 'ok', irregular ? 'gaps or bursts in the timeline' : 'evenly spaced'));
+  tiles.appendChild(statTile('Duplicate timestamps', dupTimes.toLocaleString(), dupTimes ? 'warn' : 'ok', dupTimes ? 'aggregate before modelling' : ''));
+  tiles.appendChild(statTile('Seasonal period used', chosen || '—', 'ok', chosen ? 'lags per cycle' : 'no seasonality assumed'));
+  c1.appendChild(tiles);
+
+  const roll = rollingStats(ys, Math.max(3, Math.min(Math.floor(pts.length / 10), chosen || 12)));
+  const p1 = plotBox(400);
+  c1.appendChild(p1);
+  draw(p1, [
+    { type: 'scattergl', mode: 'lines', x: xs, y: ys, name: t.name, line: { color: '#38bdf8', width: 1.4 }, hovertemplate: '%{x}<br>%{y}<extra></extra>' },
+    { type: 'scatter', mode: 'lines', x: xs, y: roll.mean, name: 'rolling mean (' + roll.w + ')', line: { color: '#f59e0b', width: 2 } },
+    { type: 'scatter', mode: 'lines', x: xs, y: roll.upper, name: '±1σ band', line: { color: 'rgba(245,158,11,.35)', width: 1 }, showlegend: true },
+    { type: 'scatter', mode: 'lines', x: xs, y: roll.lower, name: '±1σ band', line: { color: 'rgba(245,158,11,.35)', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(245,158,11,.10)', showlegend: false }
+  ], layoutBase('', { showlegend: true, xaxis: { title: useDates ? dcol.name : 'index' }, yaxis: { title: t.name } }));
+  root.appendChild(c1);
+
+  /* stationarity */
+  const half = Math.floor(ys.length / 2);
+  const m1 = mean(ys.slice(0, half)), m2 = mean(ys.slice(half));
+  const v1 = variance(ys.slice(0, half)), v2 = variance(ys.slice(half));
+  const trendFit = linfit(pts.map((p, i) => i), ys);
+  const trendStrength = Math.abs(pearson(pts.map((p, i) => i), ys));
+  const acf = autocorr(ys, Math.min(40, Math.floor(ys.length / 2) - 1));
+  const diffed = ys.slice(1).map((v, i) => v - ys[i]);
+  const acfD = autocorr(diffed, Math.min(40, Math.floor(diffed.length / 2) - 1));
+
+  const c2 = card('Stationarity check', 'Does the mean, variance and autocorrelation stay put over time?');
+  const tl2 = el('div', 'tiles');
+  const meanShift = Math.abs(m2 - m1) / (std(ys) || 1);
+  tl2.appendChild(statTile('Mean, first half', fmt(m1)));
+  tl2.appendChild(statTile('Mean, second half', fmt(m2), meanShift > 0.5 ? 'bad' : 'ok', 'shift = ' + fmt(meanShift, 2) + 'σ'));
+  tl2.appendChild(statTile('Variance ratio', fmt(v1 ? v2 / v1 : NaN, 2), (v2 / v1 > 2 || v2 / v1 < .5) ? 'warn' : 'ok', 'second half ÷ first half'));
+  tl2.appendChild(statTile('Trend slope', fmt(trendFit.m, 5), trendStrength > .5 ? 'warn' : 'ok', 'per step · |r| = ' + fmt(trendStrength, 2)));
+  tl2.appendChild(statTile('Lag-1 autocorrelation', fmt(acf[1], 3), acf[1] > .9 ? 'bad' : acf[1] > .6 ? 'warn' : 'ok', acf[1] > .9 ? 'looks like a random walk' : ''));
+  const verdict = (meanShift > .5 || trendStrength > .5 || acf[1] > .9) ? 'Non-stationary' : (v2 / v1 > 2 || v2 / v1 < .5) ? 'Variance-unstable' : 'Plausibly stationary';
+  tl2.appendChild(statTile('Verdict', verdict, verdict === 'Plausibly stationary' ? 'ok' : 'warn', verdict === 'Plausibly stationary' ? 'ARMA can be fitted directly' : 'difference or de-trend before ARIMA'));
+  c2.appendChild(tl2);
+  c2.appendChild(note('These are heuristics, not a formal ADF/KPSS test. If the verdict is non-stationary, apply first differencing (d=1) — the differenced ACF below shows what that leaves behind.'));
+  root.appendChild(c2);
+
+  /* ACF / PACF */
+  const c3 = card('Autocorrelation', 'ACF and PACF — how many lags of memory the series carries');
+  const conf = 1.96 / Math.sqrt(ys.length);
+  const pacf = partialAutocorr(acf);
+  const p3 = plotBox(320);
+  c3.appendChild(p3);
+  draw(p3, [
+    { type: 'bar', x: acf.map((_, i) => i), y: acf, name: 'ACF', marker: { color: acf.map(v => (Math.abs(v) > conf ? '#38bdf8' : 'rgba(148,163,184,.55)')) }, hovertemplate: 'lag %{x}<br>r = %{y:.3f}<extra></extra>' }
+  ], layoutBase('', {
+    xaxis: { title: 'lag' }, yaxis: { title: 'correlation', range: [-1.05, 1.05] },
+    shapes: [hline(conf, '#dc2626'), hline(-conf, '#dc2626')]
+  }));
+  const p4 = plotBox(320);
+  c3.appendChild(p4);
+  draw(p4, [
+    { type: 'bar', x: pacf.map((_, i) => i), y: pacf, name: 'PACF', marker: { color: pacf.map(v => (Math.abs(v) > conf ? '#a855f7' : 'rgba(148,163,184,.55)')) }, hovertemplate: 'lag %{x}<br>φ = %{y:.3f}<extra></extra>' }
+  ], layoutBase('', {
+    xaxis: { title: 'lag' }, yaxis: { title: 'partial correlation', range: [-1.05, 1.05] },
+    shapes: [hline(conf, '#dc2626'), hline(-conf, '#dc2626')]
+  }));
+  const sigLags = acf.map((v, i) => [i, v]).filter(p => p[0] > 0 && Math.abs(p[1]) > conf).map(p => p[0]);
+  const pacfCut = pacf.findIndex((v, i) => i > 0 && Math.abs(v) < conf);
+  c3.appendChild(note('Red dashed lines are the 95% significance band (±' + conf.toFixed(3) + '). Bars outside it are real memory. ' +
+    (sigLags.length ? 'Significant lags: ' + sigLags.slice(0, 12).join(', ') + (sigLags.length > 12 ? '…' : '') + '. ' : 'No lag clears the band — the series is close to white noise. ') +
+    (pacfCut > 0 ? 'PACF cuts off after lag ' + (pacfCut - 1) + ', which suggests an AR(' + (pacfCut - 1) + ') starting point.' : '')));
+  const p5 = plotBox(300);
+  c3.appendChild(el('h4', 'subhead', 'ACF after first differencing'));
+  c3.appendChild(p5);
+  draw(p5, [{ type: 'bar', x: acfD.map((_, i) => i), y: acfD, name: 'ACF (diff)', marker: { color: acfD.map(v => (Math.abs(v) > conf ? '#10b981' : 'rgba(148,163,184,.55)')) }, hovertemplate: 'lag %{x}<br>r = %{y:.3f}<extra></extra>' }],
+    layoutBase('', { xaxis: { title: 'lag' }, yaxis: { range: [-1.05, 1.05] }, shapes: [hline(conf, '#dc2626'), hline(-conf, '#dc2626')] }));
+  root.appendChild(c3);
+
+  /* decomposition */
+  if (chosen && chosen > 1 && ys.length >= chosen * 2 + 2) {
+    const dec = decompose(ys, chosen);
+    const c4 = card('Seasonal decomposition', 'Additive: observed = trend + seasonal + residual, period = ' + chosen);
+    [['Trend', dec.trend, '#f59e0b'], ['Seasonal', dec.seasonal, '#a855f7'], ['Residual', dec.resid, '#94a3b8']].forEach(part => {
+      const p = plotBox(220);
+      c4.appendChild(el('h4', 'subhead', part[0]));
+      c4.appendChild(p);
+      draw(p, [{ type: part[0] === 'Residual' ? 'scatter' : 'scatter', mode: part[0] === 'Residual' ? 'markers' : 'lines', x: xs, y: part[1], name: part[0], line: { color: part[2], width: 1.8 }, marker: { color: part[2], size: 3 }, hovertemplate: '%{x}<br>%{y:.4f}<extra></extra>' }],
+        layoutBase('', { margin: { l: 58, r: 20, t: 6, b: 34 }, yaxis: { title: part[0] } }));
+    });
+    const strengthS = 1 - variance(dec.resid.filter(isFinite)) / (variance(dec.resid.filter(isFinite).map((v, i) => v + dec.seasonal[i])) || 1);
+    c4.appendChild(note('Seasonal strength ≈ ' + fmt(Math.max(0, strengthS), 3) + '. Above ~0.3 means the cycle is worth modelling explicitly (SARIMA, Prophet, or seasonal dummies). A residual that still shows structure means the period is wrong — try changing it in the sidebar.'));
+    root.appendChild(c4);
+
+    // seasonal subseries
+    const c5 = card('Seasonal profile', 'Average level at each position in the cycle');
+    const buckets = Array.from({ length: chosen }, () => []);
+    ys.forEach((v, i) => buckets[i % chosen].push(v));
+    const p6 = plotBox(320);
+    c5.appendChild(p6);
+    draw(p6, buckets.map((b, i) => ({ type: 'box', y: b, name: 'p' + (i + 1), marker: { color: 'hsl(' + (190 + i * (140 / chosen)) + ' 70% 55%)', size: 3 }, hoverinfo: 'y+name' })),
+      layoutBase('', { xaxis: { title: 'position in cycle' }, yaxis: { title: t.name } }));
+    root.appendChild(c5);
+  }
+
+  /* anomalies over time */
+  const c6 = card('Anomalies in the series', 'Points beyond the rolling ±3σ envelope');
+  const anom = [];
+  roll.mean.forEach((m, i) => {
+    if (m === null) return;
+    const s = roll.std[i];
+    if (s && Math.abs(ys[i] - m) > 3 * s) anom.push(i);
+  });
+  const p7 = plotBox(340);
+  c6.appendChild(p7);
+  draw(p7, [
+    { type: 'scattergl', mode: 'lines', x: xs, y: ys, name: t.name, line: { color: 'rgba(56,189,248,.75)', width: 1.3 } },
+    { type: 'scatter', mode: 'markers', x: anom.map(i => xs[i]), y: anom.map(i => ys[i]), name: 'anomaly (>3σ)', marker: { color: '#dc2626', size: 8, symbol: 'circle-open', line: { width: 2 } }, hovertemplate: '%{x}<br>%{y}<extra>anomaly</extra>' }
+  ], layoutBase('', { showlegend: true, xaxis: { title: useDates ? dcol.name : 'index' }, yaxis: { title: t.name } }));
+  c6.appendChild(note(anom.length ? anom.length + ' points sit more than three rolling standard deviations from the local mean. Check whether they are data errors or real events before smoothing them away.' : 'No point breaches the rolling 3σ envelope — the series is well behaved.', anom.length ? 'warn' : 'good'));
+  root.appendChild(c6);
+}
+function hline(y, color) { return { type: 'line', xref: 'paper', x0: 0, x1: 1, y0: y, y1: y, line: { color, width: 1.2, dash: 'dash' } }; }
+function rollingStats(ys, w) {
+  w = Math.max(2, w);
+  const m = [], s = [], up = [], lo = [];
+  for (let i = 0; i < ys.length; i++) {
+    const a = Math.max(0, i - Math.floor(w / 2)), b = Math.min(ys.length, i + Math.ceil(w / 2));
+    const win = ys.slice(a, b);
+    const mm = mean(win), ss = std(win, mm);
+    m.push(mm); s.push(ss); up.push(mm + ss); lo.push(mm - ss);
+  }
+  return { mean: m, std: s, upper: up, lower: lo, w };
+}
+function autocorr(ys, maxLag) {
+  const m = mean(ys);
+  let denom = 0;
+  for (const v of ys) denom += (v - m) * (v - m);
+  const out = [];
+  for (let k = 0; k <= maxLag; k++) {
+    let num = 0;
+    for (let i = k; i < ys.length; i++) num += (ys[i] - m) * (ys[i - k] - m);
+    out.push(denom ? num / denom : 0);
+  }
+  return out;
+}
+function partialAutocorr(acf) { // Durbin-Levinson
+  const n = acf.length - 1;
+  const phi = [[]]; const pacf = [1];
+  const p = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(0));
+  if (n >= 1) { p[1][1] = acf[1]; pacf.push(acf[1]); }
+  for (let k = 2; k <= n; k++) {
+    let num = acf[k], den = 1;
+    for (let j = 1; j < k; j++) { num -= p[k - 1][j] * acf[k - j]; den -= p[k - 1][j] * acf[j]; }
+    const pk = den ? num / den : 0;
+    p[k][k] = pk;
+    for (let j = 1; j < k; j++) p[k][j] = p[k - 1][j] - pk * p[k - 1][k - j];
+    pacf.push(pk);
+  }
+  return pacf;
+}
+function decompose(ys, period) {
+  const n = ys.length;
+  const trend = new Array(n).fill(null);
+  const half = Math.floor(period / 2);
+  for (let i = 0; i < n; i++) {
+    if (i - half < 0 || i + half >= n) continue;
+    let s = 0, c = 0;
+    if (period % 2 === 0) {
+      s += 0.5 * ys[i - half] + 0.5 * ys[i + half]; c += 1;
+      for (let j = i - half + 1; j <= i + half - 1; j++) { s += ys[j]; c++; }
+      trend[i] = s / period;
+    } else {
+      for (let j = i - half; j <= i + half; j++) { s += ys[j]; c++; }
+      trend[i] = s / c;
+    }
+  }
+  const detr = ys.map((v, i) => (trend[i] === null ? null : v - trend[i]));
+  const seasMeans = new Array(period).fill(0), seasN = new Array(period).fill(0);
+  detr.forEach((v, i) => { if (v !== null) { seasMeans[i % period] += v; seasN[i % period]++; } });
+  for (let i = 0; i < period; i++) seasMeans[i] = seasN[i] ? seasMeans[i] / seasN[i] : 0;
+  const gm = mean(seasMeans);
+  const centered = seasMeans.map(v => v - gm);
+  const seasonal = ys.map((_, i) => centered[i % period]);
+  const resid = ys.map((v, i) => (trend[i] === null ? null : v - trend[i] - seasonal[i]));
+  return { trend, seasonal, resid };
+}
+
+/* ---------- 7.10 FINDINGS ---------- */
+function renderFindings(root) {
+  const F = [];
+  const push = (sev, title, body) => F.push({ sev, title, body });
+
+  const dup = countDuplicateRows();
+  if (dup) push('high', dup.toLocaleString() + ' duplicate rows (' + pct(dup / S.nRows) + ')', 'Identical rows inflate whatever pattern they contain and leak between train and test splits. Deduplicate unless the repeats are genuine repeated events.');
+  const heavy = S.columns.filter(c => c.missingPct > .3);
+  if (heavy.length) push('high', heavy.length + ' column(s) more than 30% empty', heavy.map(c => c.name + ' (' + pct(c.missingPct) + ')').join(', ') + '. Imputing this much invents data — drop them or keep only a missingness flag.');
+  const constants = S.columns.filter(c => c.constant);
+  if (constants.length) push('high', constants.length + ' constant column(s)', constants.map(c => c.name).join(', ') + ' never change. Zero variance means zero information.');
+  const ids = S.columns.filter(c => c.type === 'id');
+  if (ids.length) push('medium', 'Identifier-like column(s): ' + ids.map(c => c.name).join(', '), 'Unique per row. Keep them for joins, exclude them from features.');
+  const skewed = S.columns.filter(c => Math.abs(c.skew || 0) > 1.5);
+  if (skewed.length) push('medium', skewed.length + ' strongly skewed numeric column(s)', skewed.slice(0, 8).map(c => c.name + ' (' + fmt(c.skew, 2) + ')').join(', ') + '. A log1p or Yeo-Johnson transform usually helps linear and distance-based models.');
+  const outy = S.columns.filter(c => c.values && c.values.length && c.outliers / c.values.length > .08);
+  if (outy.length) push('medium', outy.length + ' column(s) with heavy tails', outy.slice(0, 8).map(c => c.name + ' (' + pct(c.outliers / c.values.length) + ' beyond 1.5×IQR)').join(', ') + '. Winsorise, clip, or switch to robust models.');
+  const hc = S.columns.filter(c => c.type === 'categorical' && c.unique > 50);
+  if (hc.length) push('medium', 'High-cardinality categories: ' + hc.map(c => c.name + ' (' + c.unique + ')').join(', '), 'One-hot encoding would blow up the feature space. Use target, frequency or hashed encoding.');
+  const dupCols = findDuplicateColumns();
+  if (dupCols.length) push('high', 'Identical columns: ' + dupCols.map(p => p.join(' = ')).join(', '), 'Exact copies double-count the same signal and make coefficients unidentifiable.');
+
+  if (S.target) {
+    const t = S.columns.find(c => c.name === S.target);
+    if (t && t.missing) push('high', 'Target has ' + t.missing + ' missing values', 'Rows without a label cannot be trained on. Drop them, or set them aside as an inference set.');
+  } else {
+    push('low', 'No target column selected', 'Pick one in the sidebar to get feature ranking, class balance or forecast diagnostics.');
+  }
+
+  const numeric = S.columns.filter(c => NUMERIC_KINDS.has(c.type) && !c.constant && c.values && c.values.length > 2);
+  if (numeric.length >= 2) {
+    let worst = null;
+    for (let i = 0; i < numeric.length; i++) for (let j = i + 1; j < numeric.length; j++) {
+      const a = [], b = [];
+      for (let k = 0; k < S.nRows; k++) { const x = numeric[i].num[k], y = numeric[j].num[k]; if (x !== null && y !== null && isFinite(x) && isFinite(y)) { a.push(x); b.push(y); } }
+      if (a.length > 2) { const r = Math.abs(pearson(a, b)); if (!worst || r > worst.r) worst = { r, a: numeric[i].name, b: numeric[j].name }; }
+    }
+    if (worst && worst.r >= .9) push('high', 'Near-duplicate features: ' + worst.a + ' ↔ ' + worst.b + ' (|r| = ' + worst.r.toFixed(3) + ')', 'Keep one. With both in a linear model the coefficients become unstable and can flip sign.');
+    else if (worst && worst.r >= .75) push('medium', 'Strong collinearity: ' + worst.a + ' ↔ ' + worst.b + ' (|r| = ' + worst.r.toFixed(3) + ')', 'Check the VIF tab before fitting a linear or logistic model.');
+  }
+
+  const scales = numeric.filter(c => c.std).map(c => Math.abs(c.mean) || c.std);
+  if (scales.length > 1) {
+    const ratio = Math.max.apply(null, scales) / Math.min.apply(null, scales);
+    if (ratio > 1000) push('medium', 'Feature scales differ by ~' + fmt(ratio, 0) + '×', 'Standardise or min-max scale before KNN, SVM, PCA, or any gradient-descent model. Tree models do not care.');
+  }
+
+  const c1 = card('What the data is telling you', F.length + ' findings, ordered by severity');
+  const order = { high: 0, medium: 1, low: 2 };
+  F.sort((a, b) => order[a.sev] - order[b.sev]);
+  if (!F.length) c1.appendChild(note('Nothing alarming turned up. The dataset is clean, complete and reasonably well conditioned.', 'good'));
+  else {
+    const list = el('div', 'findings');
+    F.forEach(f => {
+      const item = el('article', 'finding finding--' + f.sev);
+      item.innerHTML = '<span class="finding__sev">' + f.sev + '</span><div><h4>' + esc(f.title) + '</h4><p>' + esc(f.body) + '</p></div>';
+      list.appendChild(item);
+    });
+    c1.appendChild(list);
+  }
+  root.appendChild(c1);
+  S.insights = F;
+
+  /* next steps */
+  const c2 = card('Suggested next steps', 'A starting recipe based on everything above');
+  const steps = [];
+  if (dup) steps.push('df = df.drop_duplicates()');
+  if (heavy.length) steps.push("df = df.drop(columns=[" + heavy.map(c => "'" + c.name + "'").join(', ') + "])");
+  if (constants.length) steps.push("df = df.drop(columns=[" + constants.map(c => "'" + c.name + "'").join(', ') + "])  # zero variance");
+  const numMiss = S.columns.filter(c => c.missing && NUMERIC_KINDS.has(c.type) && c.missingPct <= .3);
+  if (numMiss.length) steps.push("df[[" + numMiss.slice(0, 6).map(c => "'" + c.name + "'").join(', ') + "]] = df[[" + numMiss.slice(0, 6).map(c => "'" + c.name + "'").join(', ') + "]].fillna(df.median(numeric_only=True))");
+  const catMiss = S.columns.filter(c => c.missing && c.type === 'categorical' && c.missingPct <= .3);
+  if (catMiss.length) steps.push("df[[" + catMiss.slice(0, 6).map(c => "'" + c.name + "'").join(', ') + "]] = df[[" + catMiss.slice(0, 6).map(c => "'" + c.name + "'").join(', ') + "]].fillna('Unknown')");
+  if (skewed.length) steps.push("df[[" + skewed.slice(0, 6).map(c => "'" + c.name + "'").join(', ') + "]] = np.log1p(df[[" + skewed.slice(0, 6).map(c => "'" + c.name + "'").join(', ') + "]].clip(lower=0))");
+  if (S.problem === 'classification') steps.push("X_tr, X_te, y_tr, y_te = train_test_split(X, y, stratify=y, test_size=0.2, random_state=42)");
+  if (S.problem === 'regression') steps.push("X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42)");
+  if (S.problem === 'timeseries') steps.push("train, test = df.iloc[:-h], df.iloc[-h:]  # never shuffle a time series");
+  steps.push("scaler = StandardScaler().fit(X_tr)  # skip for tree ensembles");
+  const pre = el('pre', 'code');
+  pre.textContent = '# generated from this profile\nimport numpy as np, pandas as pd\n\n' + steps.join('\n');
+  c2.appendChild(pre);
+  root.appendChild(c2);
+}
+
+/* ==========================================================================
+   8. EXPORT
+   ========================================================================== */
+function exportReport() {
+  const lines = [];
+  lines.push('DATA LAB — EDA report');
+  lines.push('File: ' + S.fileName);
+  lines.push('Generated: ' + new Date().toISOString());
+  lines.push('Problem type: ' + S.problem + (S.target ? ' · target: ' + S.target : ''));
+  lines.push('Shape: ' + S.nRows + ' rows × ' + S.columns.length + ' columns');
+  lines.push('Duplicate rows: ' + countDuplicateRows());
+  lines.push('');
+  lines.push('COLUMN,TYPE,NON_NULL,MISSING,MISSING_PCT,UNIQUE,MEAN,STD,MIN,Q1,MEDIAN,Q3,MAX,IQR,SKEW,KURTOSIS,OUTLIERS_1.5IQR');
+  S.columns.forEach(c => {
+    lines.push([c.name, c.type, c.present, c.missing, (c.missingPct * 100).toFixed(2), c.unique,
+      num(c.mean), num(c.std), num(c.min), num(c.q1), num(c.median), num(c.q3), num(c.max), num(c.iqr), num(c.skew), num(c.kurt), c.outliers === undefined ? '' : c.outliers]
+      .map(v => '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"').join(','));
+  });
+  lines.push('');
+  lines.push('FINDINGS');
+  S.insights.forEach(f => lines.push('[' + f.sev.toUpperCase() + '] ' + f.title + ' — ' + f.body));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (S.fileName || 'dataset').replace(/\.[^.]+$/, '') + '_eda_report.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  function num(v) { return v === undefined || v === null || (typeof v === 'number' && !isFinite(v)) ? '' : (v instanceof Date ? v.toISOString() : v); }
+}
+
+/* ==========================================================================
+   9. WIRING
+   ========================================================================== */
+function init() {
+  const dz = $('#dropzone'), input = $('#fileInput');
+  dz.onclick = () => input.click();
+  dz.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
+  input.onchange = e => { if (e.target.files[0]) readFile(e.target.files[0]); };
+  ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('is-over'); }));
+  ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('is-over'); }));
+  dz.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) readFile(f); });
+
+  $$('.problem').forEach(b => b.onclick = () => {
+    $$('.problem').forEach(x => x.classList.remove('is-active'));
+    b.classList.add('is-active');
+    S.problem = b.dataset.value;
+    syncProblemUI();
+  });
+
+  $('#runBtn').onclick = () => {
+    $('#runBtn').classList.add('is-busy');
+    $('#runBtn').textContent = 'Computing…';
+    setTimeout(() => {
+      run();
+      $('#runBtn').classList.remove('is-busy');
+      $('#runBtn').textContent = 'Compute and generate';
+    }, 40);
+  };
+  $('#downloadBtn').onclick = exportReport;
+
+  $('#themeBtn').onclick = () => {
+    S.theme = S.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = S.theme;
+    $('#themeBtn').setAttribute('aria-label', 'Switch to ' + (S.theme === 'dark' ? 'light' : 'dark') + ' theme');
+    setTimeout(() => S.plots.forEach(n => {
+      if (!n.data || !n.isConnected) return;
+      Plotly.relayout(n, {
+        'font.color': cssVar('--muted'),
+        'xaxis.gridcolor': cssVar('--grid'), 'yaxis.gridcolor': cssVar('--grid'),
+        'xaxis.linecolor': cssVar('--grid'), 'yaxis.linecolor': cssVar('--grid'),
+        'hoverlabel.bgcolor': cssVar('--panel2'), 'hoverlabel.font.color': cssVar('--text'),
+        'title.font.color': cssVar('--text')
+      });
+    }), 30);
+  };
+
+  $('#demoBtn').onclick = loadDemo;
+  let rt;
+  window.addEventListener('resize', () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => S.plots.forEach(n => { if (n.data && n.isConnected && n.offsetParent) Plotly.Plots.resize(n); }), 180);
+  });
+}
+
+/* small synthetic dataset so the dashboard can be tried without a file */
+function loadDemo() {
+  const n = 480, rows = [['date', 'region', 'segment', 'units', 'unit_price', 'revenue', 'discount_pct', 'ad_spend', 'returned', 'customer_id']];
+  const regions = ['North', 'South', 'East', 'West', 'Central'];
+  const segs = ['Retail', 'Wholesale', 'Online'];
+  let rev0 = 1000;
+  for (let i = 0; i < n; i++) {
+    const d = new Date(2023, 0, 1 + i);
+    const season = 1 + 0.28 * Math.sin((i / 7) * 2 * Math.PI) + 0.18 * Math.sin((i / 365) * 2 * Math.PI);
+    const trend = 1 + i * 0.0022;
+    const noise = 1 + (Math.random() - .5) * 0.22;
+    const units = Math.max(1, Math.round(38 * season * trend * noise));
+    const price = Math.round((22 + Math.random() * 9) * 100) / 100;
+    const disc = Math.random() < .3 ? Math.round(Math.random() * 25) : 0;
+    const revenue = Math.round(units * price * (1 - disc / 100) * 100) / 100;
+    const ad = Math.round(revenue * (0.08 + Math.random() * 0.05) * 100) / 100;
+    rows.push([
+      d.toISOString().slice(0, 10),
+      regions[i % 5],
+      segs[Math.floor(Math.random() * 3)],
+      units,
+      price,
+      revenue,
+      disc,
+      Math.random() < .04 ? null : ad,
+      Math.random() < (disc > 15 ? .25 : .08) ? 'Yes' : 'No',
+      'C' + String(10000 + i)
+    ]);
+  }
+  rows.push(rows[5].slice()); rows.push(rows[5].slice()); // plant duplicates
+  S.fileName = 'demo_retail_daily.csv';
+  ingest(rows);
+  onDataLoaded();
+  setStatus('Loaded the built-in demo dataset — daily retail sales with a weekly cycle, some nulls and two planted duplicates.');
+}
+
+document.addEventListener('DOMContentLoaded', init);
+
+</script>
+</body>
+</html>
