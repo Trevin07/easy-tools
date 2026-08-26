@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Axiom — Interactive Math, Physics & Stats</title>
+<style>
+:root{
+  --bg:#101314; --panel:#171b1c; --panel2:#1e2324; --line:#2c3334;
+  --ink:#edf1ef; --ink-dim:#9aa6a2; --accent:#7fd1c1; --accent2:#e0a05a;
+  --ok:#8ccf6e; --bad:#e0716a; --radius:12px;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'SF Mono',Consolas,monospace;
+}
+[data-theme="light"]{
+  --bg:#f7f5ef; --panel:#ffffff; --panel2:#eeece2; --line:#dcd8ca;
+  --ink:#1b1f1d; --ink-dim:#666f6a; --accent:#1f8c76; --accent2:#b3711c;
+  --ok:#3e8f21; --bad:#c4453b;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+body{font-family:var(--sans); background:var(--bg); color:var(--ink); min-height:100vh;}
+.topbar{
+  display:flex; align-items:center; justify-content:space-between; padding:14px 24px;
+  border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:30;
+}
+.brand{display:flex; align-items:center; gap:10px;}
+.brand .mark{width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,var(--accent),var(--accent2)); display:flex; align-items:center; justify-content:center; font-weight:800; color:#101314;}
+.brand h1{font-size:16px; font-weight:700;}
+.brand span{font-size:11px; color:var(--ink-dim); font-family:var(--mono);}
+.theme-toggle{border:1px solid var(--line); background:var(--panel2); color:var(--ink); padding:7px 12px; border-radius:20px; cursor:pointer; font-size:12px;}
+
+.layout{display:grid; grid-template-columns:260px 1fr; min-height:calc(100vh - 58px);}
+@media (max-width:880px){ .layout{grid-template-columns:1fr;} .nav{position:static; max-height:none;} }
+
+.nav{border-right:1px solid var(--line); background:var(--panel); padding:16px 10px; position:sticky; top:58px; max-height:calc(100vh - 58px); overflow-y:auto;}
+.nav .group-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-dim); padding:12px 10px 6px;}
+.nav-item{display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:8px; cursor:pointer; font-size:13px; color:var(--ink-dim); margin-bottom:2px;}
+.nav-item:hover{background:var(--panel2); color:var(--ink);}
+.nav-item.active{background:var(--panel2); color:var(--ink); box-shadow:inset 3px 0 0 var(--accent); font-weight:600;}
+.nav-item .ic{font-size:15px; width:18px; text-align:center;}
+
+.main{padding:26px 30px; max-width:1000px;}
+.lesson-head h2{font-size:22px; font-weight:800; margin-bottom:6px;}
+.lesson-head p.sub{color:var(--ink-dim); font-size:14px; max-width:640px; line-height:1.6; margin-bottom:22px;}
+
+.panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px; margin-bottom:18px;}
+.panel h3{font-size:12.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-dim); margin-bottom:12px;}
+.canvas-wrap{position:relative; width:100%; height:380px; background:var(--panel2); border-radius:8px; overflow:hidden;}
+canvas{display:block; width:100%; height:100%;}
+
+.controls{display:flex; flex-wrap:wrap; gap:16px; margin-top:14px; align-items:flex-end;}
+.ctrl{display:flex; flex-direction:column; gap:5px; min-width:130px;}
+.ctrl label{font-size:11px; color:var(--ink-dim); display:flex; justify-content:space-between;}
+.ctrl label b{color:var(--ink); font-family:var(--mono); font-weight:600;}
+input[type=range]{accent-color:var(--accent); width:150px;}
+select{padding:7px; border-radius:6px; background:var(--panel2); color:var(--ink); border:1px solid var(--line);}
+.btn{background:var(--accent); color:#101314; border:none; font-weight:700; padding:9px 16px; border-radius:8px; cursor:pointer; font-size:13px;}
+.btn.secondary{background:var(--panel2); color:var(--ink); border:1px solid var(--line);}
+.btn:hover{filter:brightness(1.08);}
+.btn-row{display:flex; gap:8px; flex-wrap:wrap;}
+
+.metrics{display:flex; gap:22px; flex-wrap:wrap; margin-top:12px; font-family:var(--mono); font-size:13px;}
+.metrics .m{color:var(--ink-dim);}
+.metrics .m b{color:var(--accent); font-size:15px; display:block;}
+
+.explain{font-size:13.5px; line-height:1.75; color:var(--ink);}
+.explain p{margin-bottom:10px;}
+.explain .key{color:var(--accent); font-weight:700;}
+.eq{font-family:var(--mono); background:var(--panel2); padding:2px 6px; border-radius:5px; font-size:13px;}
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="topbar">
+  <div class="brand">
+    <div class="mark">A</div>
+    <div><h1>Axiom</h1><span>interactive math · physics · stats lab</span></div>
+  </div>
+  <button class="theme-toggle" onclick="toggleTheme()"><span id="themeIcon">☾</span> <span id="themeLabel">Dark</span></button>
+</div>
+
+<div class="layout">
+  <div class="nav" id="nav">
+    <div class="group-label">Math</div>
+    <div class="nav-item" data-lesson="functions"><span class="ic">📐</span>Functions & Derivatives</div>
+    <div class="nav-item" data-lesson="unitcircle"><span class="ic">⭕</span>Unit Circle & Waves</div>
+    <div class="group-label">Physics</div>
+    <div class="nav-item" data-lesson="projectile"><span class="ic">🚀</span>Projectile Motion</div>
+    <div class="nav-item" data-lesson="springs"><span class="ic">🌀</span>Simple Harmonic Motion</div>
+    <div class="group-label">Statistics</div>
+    <div class="nav-item" data-lesson="distributions"><span class="ic">🔔</span>Probability Distributions</div>
+    <div class="nav-item" data-lesson="clt"><span class="ic">🎲</span>Central Limit Theorem</div>
+    <div class="nav-item" data-lesson="correlation"><span class="ic">📊</span>Correlation & Covariance</div>
+    <div class="nav-item" data-lesson="hypothesis"><span class="ic">🧪</span>Hypothesis Testing (p-values)</div>
+  </div>
+
+  <div class="main" id="mainArea"></div>
+</div>
+
+<script>
+function toggleTheme(){
+  const b = document.body;
+  const next = b.getAttribute('data-theme')==='dark' ? 'light' : 'dark';
+  b.setAttribute('data-theme', next);
+  document.getElementById('themeIcon').textContent = next==='dark' ? '☾' : '☀';
+  document.getElementById('themeLabel').textContent = next==='dark' ? 'Dark' : 'Light';
+  if(currentLesson) LESSONS[currentLesson].render();
+}
+function css(v){ return getComputedStyle(document.body).getPropertyValue(v).trim(); }
+
+let currentLesson = null;
+document.querySelectorAll('.nav-item').forEach(item=>{
+  item.onclick = ()=>{
+    document.querySelectorAll('.nav-item').forEach(i=>i.classList.remove('active'));
+    item.classList.add('active');
+    loadLesson(item.dataset.lesson);
+  };
+});
+function loadLesson(id){
+  currentLesson = id;
+  document.getElementById('mainArea').innerHTML = LESSONS[id].html;
+  LESSONS[id].init();
+}
+
+function setupCanvas(canvas){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return {ctx, w: rect.width, h: rect.height};
+}
+function clear(ctx,w,h){ ctx.clearRect(0,0,w,h); }
+function axes(ctx,w,h,pad,xMin,xMax,yMin,yMax){
+  const px = x => pad + (w-2*pad)*(x-xMin)/(xMax-xMin);
+  const py = y => (h-pad) - (h-2*pad)*(y-yMin)/(yMax-yMin);
+  ctx.strokeStyle = css('--line'); ctx.lineWidth=1;
+  for(let i=0;i<=10;i++){
+    const x = pad + (w-2*pad)*i/10; ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,h-pad); ctx.stroke();
+    const y = pad + (h-2*pad)*i/10; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(w-pad,y); ctx.stroke();
+  }
+  ctx.strokeStyle = css('--ink-dim'); ctx.lineWidth=1.5;
+  if(yMin<0 && yMax>0){ ctx.beginPath(); ctx.moveTo(pad,py(0)); ctx.lineTo(w-pad,py(0)); ctx.stroke(); }
+  else { ctx.beginPath(); ctx.moveTo(pad,h-pad); ctx.lineTo(w-pad,h-pad); ctx.stroke(); }
+  if(xMin<0 && xMax>0){ ctx.beginPath(); ctx.moveTo(px(0),pad); ctx.lineTo(px(0),h-pad); ctx.stroke(); }
+  else { ctx.beginPath(); ctx.moveTo(pad,pad); ctx.lineTo(pad,h-pad); ctx.stroke(); }
+  return {px,py};
+}
+function plotFn(ctx,px,py,xMin,xMax,f,color,width,dash){
+  ctx.strokeStyle=color; ctx.lineWidth=width||2.5; ctx.setLineDash(dash||[]);
+  ctx.beginPath(); let started=false;
+  for(let i=0;i<=400;i++){
+    const x=xMin+(xMax-xMin)*i/400; let y;
+    try{ y=f(x);}catch(e){ started=false; continue; }
+    if(!isFinite(y)){ started=false; continue; }
+    const X=px(x),Y=py(y);
+    if(!started){ ctx.moveTo(X,Y); started=true; } else ctx.lineTo(X,Y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+}
+
+/* =========================================================
+   MATH 1: Functions & Derivatives
+========================================================= */
+const functions = {
+  html:`
+    <div class="lesson-head"><h2>📐 Functions & Derivatives</h2>
+    <p class="sub">Pick a function, drag a point along the curve, and watch the tangent line show you the derivative — the instantaneous rate of change — in real time.</p></div>
+    <div class="panel">
+      <h3>Curve & Tangent</h3>
+      <div class="canvas-wrap"><canvas id="fn-canvas" style="cursor:ew-resize;"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Function</label>
+          <select id="fn-select">
+            <option value="quad">f(x) = x²</option>
+            <option value="cubic">f(x) = x³ − 3x</option>
+            <option value="sin">f(x) = sin(x)</option>
+            <option value="exp">f(x) = eˣ / 4</option>
+            <option value="log">f(x) = ln(x+3)</option>
+          </select>
+        </div>
+        <div class="ctrl"><label>Point x <b id="fn-x-val">1.00</b></label><input type="range" id="fn-x" min="-4.9" max="4.9" step="0.02" value="1"></div>
+      </div>
+      <div class="metrics">
+        <div class="m">f(x)<b id="fn-fx">—</b></div>
+        <div class="m">f'(x) — slope of tangent<b id="fn-fpx">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain"><h3>What's happening</h3>
+      <p>The derivative <span class="eq">f'(x)</span> is estimated numerically as <span class="eq">[f(x+h) − f(x−h)] / 2h</span> for a tiny <span class="eq">h</span> — the same idea calculus formalizes with limits. The green tangent line's steepness <em>is</em> that derivative value.</p>
+      <p>Notice: where the curve is flat (a peak or valley), <span class="key">f'(x) ≈ 0</span> — this is exactly why optimization algorithms hunt for points where the gradient vanishes.</p>
+    </div>`,
+  fns:{
+    quad:{f:x=>x*x, xMin:-5,xMax:5,yMin:-2,yMax:20},
+    cubic:{f:x=>x**3-3*x, xMin:-3,xMax:3,yMin:-8,yMax:8},
+    sin:{f:x=>Math.sin(x), xMin:-6.5,xMax:6.5,yMin:-2,yMax:2},
+    exp:{f:x=>Math.exp(x)/4, xMin:-5,xMax:3,yMin:-1,yMax:8},
+    log:{f:x=>Math.log(x+3), xMin:-2.9,xMax:8,yMin:-3,yMax:3},
+  },
+  init(){
+    document.getElementById('fn-select').onchange = ()=>this.render();
+    document.getElementById('fn-x').oninput = e=>{ document.getElementById('fn-x-val').textContent=parseFloat(e.target.value).toFixed(2); this.render(); };
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('fn-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas); clear(ctx,w,h); const pad=40;
+    const key = document.getElementById('fn-select').value;
+    const spec = this.fns[key];
+    const {px,py} = axes(ctx,w,h,pad,spec.xMin,spec.xMax,spec.yMin,spec.yMax);
+    plotFn(ctx,px,py,spec.xMin,spec.xMax,spec.f,css('--accent'),2.5);
+
+    let xp = parseFloat(document.getElementById('fn-x').value);
+    xp = Math.max(spec.xMin+0.1, Math.min(spec.xMax-0.1, xp));
+    const hh=0.001;
+    const yp = spec.f(xp);
+    const slope = (spec.f(xp+hh)-spec.f(xp-hh))/(2*hh);
+    ctx.strokeStyle=css('--ok'); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(px(xp-1.2),py(yp-slope*1.2)); ctx.lineTo(px(xp+1.2),py(yp+slope*1.2)); ctx.stroke();
+    ctx.fillStyle=css('--accent2'); ctx.beginPath(); ctx.arc(px(xp),py(yp),5.5,0,7); ctx.fill();
+
+    document.getElementById('fn-fx').textContent = yp.toFixed(3);
+    document.getElementById('fn-fpx').textContent = slope.toFixed(3);
+  }
+};
+
+/* =========================================================
+   MATH 2: Unit Circle & Waves
+========================================================= */
+const unitcircle = {
+  html:`
+    <div class="lesson-head"><h2>⭕ Unit Circle & Waves</h2>
+    <p class="sub">Sine and cosine are just the coordinates of a point moving around a circle. Drag the angle and watch the wave trace out live.</p></div>
+    <div class="panel">
+      <h3>Circle → Wave</h3>
+      <div class="canvas-wrap"><canvas id="uc-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Angle θ (radians) <b id="uc-t-val">0.00</b></label><input type="range" id="uc-t" min="0" max="12.56" step="0.02" value="0"></div>
+        <div class="btn-row"><button class="btn" id="uc-play">▶ Animate</button><button class="btn secondary" id="uc-stop">⏸ Stop</button></div>
+      </div>
+      <div class="metrics">
+        <div class="m">cos(θ) — x coord<b id="uc-cos">—</b></div>
+        <div class="m">sin(θ) — y coord<b id="uc-sin">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain"><h3>What's happening</h3>
+      <p>As the point sweeps around the unit circle (left), its height (y-coordinate) traces the <span class="key">sine wave</span> on the right, and its horizontal position traces cosine. This is why trig functions are naturally periodic — they literally come from circular motion, which is why they show up everywhere from sound waves to AC electricity to seasonal data.</p>
+    </div>`,
+  timer:null,
+  init(){
+    const slider = document.getElementById('uc-t');
+    slider.oninput = ()=>{ document.getElementById('uc-t-val').textContent = parseFloat(slider.value).toFixed(2); this.render(); };
+    document.getElementById('uc-play').onclick = ()=>{
+      clearInterval(this.timer);
+      this.timer = setInterval(()=>{
+        let v = parseFloat(slider.value)+0.05;
+        if(v>12.56) v=0;
+        slider.value=v; document.getElementById('uc-t-val').textContent=v.toFixed(2); this.render();
+      }, 30);
+    };
+    document.getElementById('uc-stop').onclick = ()=>clearInterval(this.timer);
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('uc-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas); clear(ctx,w,h);
+    const t = parseFloat(document.getElementById('uc-t').value);
+    const cx = w*0.24, cy=h*0.5, r=Math.min(w*0.2,h*0.38);
+
+    ctx.strokeStyle=css('--line'); ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx-r-10,cy); ctx.lineTo(cx+r+10,cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx,cy-r-10); ctx.lineTo(cx,cy+r+10); ctx.stroke();
+
+    const px2 = cx+r*Math.cos(t), py2 = cy-r*Math.sin(t);
+    ctx.strokeStyle=css('--accent'); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(px2,py2); ctx.stroke();
+    ctx.fillStyle=css('--accent2'); ctx.beginPath(); ctx.arc(px2,py2,6,0,7); ctx.fill();
+    // projection lines
+    ctx.strokeStyle=css('--ink-dim'); ctx.setLineDash([3,3]); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(px2,py2); ctx.lineTo(px2,cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px2,py2); ctx.lineTo(cx,py2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // wave area
+    const padL = w*0.44, padR=w*0.06, waveW = w-padL-padR;
+    const yMid = h*0.5, amp = Math.min(h*0.35, 90);
+    ctx.strokeStyle=css('--line'); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(padL,yMid); ctx.lineTo(w-padR,yMid); ctx.stroke();
+
+    ctx.strokeStyle=css('--accent'); ctx.lineWidth=2.5; ctx.beginPath();
+    for(let i=0;i<=200;i++){
+      const tt = i/200 * 12.56;
+      const X = padL + waveW*i/200;
+      const Y = yMid - amp*Math.sin(tt);
+      i===0?ctx.moveTo(X,Y):ctx.lineTo(X,Y);
+    }
+    ctx.stroke();
+    // current point on wave
+    const curX = padL + waveW*(t/12.56);
+    const curY = yMid - amp*Math.sin(t);
+    ctx.fillStyle=css('--accent2'); ctx.beginPath(); ctx.arc(curX,curY,6,0,7); ctx.fill();
+    ctx.strokeStyle=css('--ink-dim'); ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(py2===undefined?0:px2, py2); ctx.lineTo(curX,curY); ctx.stroke();
+    ctx.setLineDash([]);
+
+    document.getElementById('uc-cos').textContent = Math.cos(t).toFixed(3);
+    document.getElementById('uc-sin').textContent = Math.sin(t).toFixed(3);
+  }
+};
+
+/* =========================================================
+   PHYSICS 1: Projectile Motion
+========================================================= */
+const projectile = {
+  html:`
+    <div class="lesson-head"><h2>🚀 Projectile Motion</h2>
+    <p class="sub">Launch a projectile and see how angle and speed shape the trajectory under gravity. Real Newtonian physics, no libraries — just x(t), y(t), and g.</p></div>
+    <div class="panel">
+      <h3>Trajectory Simulator</h3>
+      <div class="canvas-wrap"><canvas id="pr-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Launch angle (°) <b id="pr-ang-val">45</b></label><input type="range" id="pr-ang" min="5" max="85" step="1" value="45"></div>
+        <div class="ctrl"><label>Launch speed (m/s) <b id="pr-spd-val">20</b></label><input type="range" id="pr-spd" min="5" max="40" step="1" value="20"></div>
+        <div class="ctrl"><label>Gravity g (m/s²) <b id="pr-g-val">9.8</b></label><input type="range" id="pr-g" min="1" max="25" step="0.1" value="9.8"></div>
+        <div class="btn-row"><button class="btn" id="pr-launch">🚀 Launch</button></div>
+      </div>
+      <div class="metrics">
+        <div class="m">Max height<b id="pr-h">—</b> m</div>
+        <div class="m">Range<b id="pr-r">—</b> m</div>
+        <div class="m">Time of flight<b id="pr-t">—</b> s</div>
+      </div>
+    </div>
+    <div class="panel explain"><h3>What's happening</h3>
+      <p>Horizontal velocity stays constant (no air resistance): <span class="eq">x(t) = v·cos(θ)·t</span>. Vertical motion decelerates under gravity: <span class="eq">y(t) = v·sin(θ)·t − ½g·t²</span>. The dashed curve is the theoretical path; the animated dot is the live simulation.</p>
+      <p>Try 45° — it maximizes range for a given speed. Try very high or very low angles to see why.</p>
+    </div>`,
+  timer:null, t:0,
+  init(){
+    document.getElementById('pr-ang').oninput = e=>{ document.getElementById('pr-ang-val').textContent=e.target.value; this.render(); };
+    document.getElementById('pr-spd').oninput = e=>{ document.getElementById('pr-spd-val').textContent=e.target.value; this.render(); };
+    document.getElementById('pr-g').oninput = e=>{ document.getElementById('pr-g-val').textContent=parseFloat(e.target.value).toFixed(1); this.render(); };
+    document.getElementById('pr-launch').onclick = ()=>{
+      clearInterval(this.timer); this.t=0;
+      this.timer = setInterval(()=>{ this.t+=0.03; this.render(true); if(this.t>this.totalT()) clearInterval(this.timer); }, 20);
+    };
+    this.render();
+  },
+  totalT(){
+    const ang = parseFloat(document.getElementById('pr-ang').value)*Math.PI/180;
+    const v = parseFloat(document.getElementById('pr-spd').value);
+    const g = parseFloat(document.getElementById('pr-g').value);
+    return 2*v*Math.sin(ang)/g;
+  },
+  render(animating){
+    const canvas = document.getElementById('pr-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas); clear(ctx,w,h); const pad=40;
+    const ang = parseFloat(document.getElementById('pr-ang').value)*Math.PI/180;
+    const v = parseFloat(document.getElementById('pr-spd').value);
+    const g = parseFloat(document.getElementById('pr-g').value);
+    const T = 2*v*Math.sin(ang)/g;
+    const R = v*Math.cos(ang)*T;
+    const H = (v*Math.sin(ang))**2/(2*g);
+    const xMax = Math.max(R*1.15, 10), yMax = Math.max(H*1.3, 5);
+    const {px,py} = axes(ctx,w,h,pad,0,xMax,0,yMax);
+
+    plotFn(ctx,px,py,0,R,(x)=>{
+      const tt = x/(v*Math.cos(ang)); return v*Math.sin(ang)*tt - 0.5*g*tt*tt;
+    }, css('--ink-dim'), 1.8, [5,4]);
+
+    if(!animating) this.t=0;
+    const tt = Math.min(this.t, T);
+    const cx = v*Math.cos(ang)*tt, cy = Math.max(0, v*Math.sin(ang)*tt - 0.5*g*tt*tt);
+    ctx.fillStyle = css('--accent2');
+    ctx.beginPath(); ctx.arc(px(cx),py(cy),6,0,7); ctx.fill();
+
+    document.getElementById('pr-h').textContent = H.toFixed(2);
+    document.getElementById('pr-r').textContent = R.toFixed(2);
+    document.getElementById('pr-t').textContent = T.toFixed(2);
+  }
+};
+
+/* =========================================================
+   PHYSICS 2: Simple Harmonic Motion
+========================================================= */
+const springs = {
+  html:`
+    <div class="lesson-head"><h2>🌀 Simple Harmonic Motion</h2>
+    <p class="sub">A mass on a spring oscillates with position, velocity, and acceleration all following clean sinusoidal patterns — the foundation of everything from clocks to AC circuits to molecular vibration.</p></div>
+    <div class="panel">
+      <h3>Mass on a Spring</h3>
+      <div class="canvas-wrap"><canvas id="sp-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Amplitude (m) <b id="sp-amp-val">1.5</b></label><input type="range" id="sp-amp" min="0.3" max="2.5" step="0.1" value="1.5"></div>
+        <div class="ctrl"><label>Angular freq ω <b id="sp-w-val">1.5</b></label><input type="range" id="sp-w" min="0.5" max="4" step="0.1" value="1.5"></div>
+        <div class="btn-row"><button class="btn" id="sp-play">▶ Animate</button><button class="btn secondary" id="sp-stop">⏸ Stop</button></div>
+      </div>
+      <div class="metrics">
+        <div class="m">Position x(t)<b id="sp-x">—</b></div>
+        <div class="m">Velocity v(t)<b id="sp-v">—</b></div>
+        <div class="m">Acceleration a(t)<b id="sp-a">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain"><h3>What's happening</h3>
+      <p><span class="eq">x(t) = A·cos(ωt)</span>, and calculus gives velocity <span class="eq">v(t) = −Aω·sin(ωt)</span> and acceleration <span class="eq">a(t) = −Aω²·cos(ωt) = −ω²x</span> — acceleration is always proportional to <em>negative</em> displacement, which is the defining signature of harmonic motion (and of Hooke's law, <span class="eq">F = −kx</span>).</p>
+    </div>`,
+  t:0, timer:null,
+  init(){
+    document.getElementById('sp-amp').oninput = e=>{ document.getElementById('sp-amp-val').textContent=e.target.value; this.render(); };
+    document.getElementById('sp-w').oninput = e=>{ document.getElementById('sp-w-val').textContent=e.target.value; this.render(); };
+    document.getElementById('sp-play').onclick = ()=>{
+      clearInterval(this.timer);
+      this.timer = setInterval(()=>{ this.t+=0.05; this.render(); }, 30);
+    };
+    document.getElementById('sp-stop').onclick = ()=>clearInterval(this.timer);
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('sp-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas); clear(ctx,w,h);
+    const A = parseFloat(document.getElementById('sp-amp').value);
+    const wgt = parseFloat(document.getElementById('sp-w').value);
+
+    // spring visual (left column)
+    const colW = w*0.22, midX = colW*0.6, topY=20, botY=h-20;
+    const restY = topY + (botY-topY)*0.35;
+    const range = (botY-topY)*0.3;
+    const x_t = A*Math.cos(wgt*this.t);
+    const massY = restY + (x_t/2.5)*range;
+    ctx.strokeStyle=css('--ink-dim'); ctx.lineWidth=2;
+    let coils=12, prevY=topY;
+    ctx.beginPath(); ctx.moveTo(midX, topY);
+    for(let i=1;i<=coils;i++){
+      const yy = topY + (massY-topY)*i/coils;
+      const xx = midX + (i%2===0?14:-14);
+      ctx.lineTo(xx, yy);
+    }
+    ctx.lineTo(midX, massY); ctx.stroke();
+    ctx.fillStyle=css('--accent2');
+    ctx.fillRect(midX-18, massY, 36, 26);
+    ctx.strokeStyle=css('--panel'); ctx.strokeRect(midX-18, massY, 36, 26);
+
+    // graph area (right)
+    const pad=40, gx0 = colW+20, gx1 = w-20;
+    const xMin=0, xMax=Math.max(12, this.t+4), yMin=-3, yMax=3;
+    const px = x => gx0 + (gx1-gx0)*(x-xMin)/(xMax-xMin);
+    const py = y => (h-pad) - (h-2*pad)*(y-yMin)/(yMax-yMin);
+    ctx.strokeStyle=css('--line'); ctx.lineWidth=1;
+    for(let i=0;i<=10;i++){ const y=pad+(h-2*pad)*i/10; ctx.beginPath(); ctx.moveTo(gx0,y); ctx.lineTo(gx1,y); ctx.stroke(); }
+    ctx.strokeStyle=css('--ink-dim'); ctx.beginPath(); ctx.moveTo(gx0,py(0)); ctx.lineTo(gx1,py(0)); ctx.stroke();
+
+    plotFn(ctx, px, py, xMin, xMax, t=>A*Math.cos(wgt*t), css('--accent'), 2.2);
+    plotFn(ctx, px, py, xMin, xMax, t=>-A*wgt*Math.sin(wgt*t), css('--accent2'), 1.6, [5,4]);
+
+    ctx.fillStyle=css('--ok'); ctx.beginPath(); ctx.arc(px(this.t), py(x_t), 5, 0, 7); ctx.fill();
+
+    const v_t = -A*wgt*Math.sin(wgt*this.t);
+    const a_t = -A*wgt*wgt*Math.cos(wgt*this.t);
+    document.getElementById('sp-x').textContent = x_t.toFixed(3);
+    document.getElementById('sp-v').textContent = v_t.toFixed(3);
+    document.getElementById('sp-a').textContent = a_t.toFixed(3);
+  }
+};
+
+/* =========================================================
+   STATS 1: Probability Distributions
+========================================================= */
+const distributions = {
+  html:`
+    <div class="lesson-head"><h2>🔔 Probability Distributions</h2>
+    <p class="sub">Shapes that describe how likely different outcomes are. Tune parameters and watch the curve reshape live.</p></div>
+    <div class="panel">
+      <h3>Distribution Explorer</h3>
+      <div class="canvas-wrap"><canvas id="di-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Distribution</label>
+          <select id="di-select">
+            <option value="normal">Normal (Gaussian)</option>
+            <option value="uniform">Uniform</option>
+            <option value="exponential">Exponential</option>
+            <option value="binomial">Binomial</option>
+          </select>
+        </div>
+        <div class="ctrl" id="di-p1-ctrl"><label id="di-p1-label">Mean (μ) <b id="di-p1-val">0.0</b></label><input type="range" id="di-p1" min="-3" max="3" step="0.1" value="0"></div>
+        <div class="ctrl" id="di-p2-ctrl"><label id="di-p2-label">Std dev (σ) <b id="di-p2-val">1.0</b></label><input type="range" id="di-p2" min="0.2" max="3" step="0.1" value="1"></div>
+      </div>
+      <div class="metrics">
+        <div class="m">Mean<b id="di-mean">—</b></div>
+        <div class="m">Variance<b id="di-var">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain"><h3>What's happening</h3>
+      <p>The <span class="key">Normal</span> distribution's bell shape comes from the sum of many small random effects (see the Central Limit Theorem lesson). <span class="key">Exponential</span> models waiting times between random events. <span class="key">Binomial</span> models counting successes in repeated yes/no trials. Shading under the curve represents probability mass.</p>
+    </div>`,
+  init(){
+    document.getElementById('di-select').onchange = ()=>{ this.updateControls(); this.render(); };
+    document.getElementById('di-p1').oninput = e=>{ document.getElementById('di-p1-val').textContent=parseFloat(e.target.value).toFixed(1); this.render(); };
+    document.getElementById('di-p2').oninput = e=>{ document.getElementById('di-p2-val').textContent=parseFloat(e.target.value).toFixed(1); this.render(); };
+    this.updateControls();
+    this.render();
+  },
+  updateControls(){
+    const key = document.getElementById('di-select').value;
+    const p1l=document.getElementById('di-p1-label'), p2ctrl=document.getElementById('di-p2-ctrl'), p2l=document.getElementById('di-p2-label');
+    const p1=document.getElementById('di-p1'), p2=document.getElementById('di-p2');
+    if(key==='normal'){ p1l.innerHTML='Mean (μ) <b id="di-p1-val">'+p1.value+'</b>'; p2ctrl.style.display='flex'; p1.min=-3;p1.max=3; }
+    else if(key==='uniform'){ p1l.innerHTML='Lower bound <b id="di-p1-val">'+p1.value+'</b>'; p2ctrl.style.display='flex'; p2l.innerHTML='Upper bound <b id="di-p2-val">'+p2.value+'</b>'; p1.min=-3;p1.max=1; p2.min=0;p2.max=3;p2.value=Math.max(2,parseFloat(p2.value));}
+    else if(key==='exponential'){ p1l.innerHTML='Rate (λ) <b id="di-p1-val">'+p1.value+'</b>'; p2ctrl.style.display='none'; p1.min=0.2;p1.max=3; p1.value=Math.max(0.2,p1.value);}
+    else if(key==='binomial'){ p1l.innerHTML='Trials (n) <b id="di-p1-val">'+p1.value+'</b>'; p2ctrl.style.display='flex'; p2l.innerHTML='Success prob (p) <b id="di-p2-val">'+p2.value+'</b>'; p1.min=1;p1.max=40;p1.step=1; p2.min=0.05;p2.max=0.95;p2.step=0.05;}
+  },
+  render(){
+    const canvas = document.getElementById('di-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas); clear(ctx,w,h); const pad=40;
+    const key = document.getElementById('di-select').value;
+    const p1 = parseFloat(document.getElementById('di-p1').value), p2 = parseFloat(document.getElementById('di-p2').value);
+    let mean, variance, xMin,xMax,yMax, pdf, discrete=false;
+
+    if(key==='normal'){
+      mean=p1; variance=p2*p2; xMin=-8;xMax=8; yMax=1/(p2*Math.sqrt(2*Math.PI))*1.3;
+      pdf = x => (1/(p2*Math.sqrt(2*Math.PI)))*Math.exp(-0.5*((x-p1)/p2)**2);
+    } else if(key==='uniform'){
+      const lo=Math.min(p1,p2), hi=Math.max(p1,p2)||lo+1; mean=(lo+hi)/2; variance=(hi-lo)**2/12;
+      xMin=-4;xMax=4; yMax = 1/(hi-lo||1)*1.4;
+      pdf = x => (x>=lo && x<=hi) ? 1/(hi-lo||1) : 0;
+    } else if(key==='exponential'){
+      const lambda=Math.max(0.05,p1); mean=1/lambda; variance=1/(lambda*lambda);
+      xMin=0;xMax=8;yMax=lambda*1.3;
+      pdf = x => x<0?0:lambda*Math.exp(-lambda*x);
+    } else {
+      const n=Math.round(p1), p=p2; discrete=true;
+      mean=n*p; variance=n*p*(1-p);
+      xMin=0;xMax=n;
+      const comb=(n,k)=>{ let r=1; for(let i=0;i<k;i++) r=r*(n-i)/(i+1); return r; };
+      pdf = k => comb(n,Math.round(k))*Math.pow(p,Math.round(k))*Math.pow(1-p,n-Math.round(k));
+      yMax = Math.max(...Array.from({length:n+1},(_, k)=>pdf(k)))*1.3;
+    }
+    const {px,py} = axes(ctx,w,h,pad,xMin,xMax,0,yMax);
+
+    if(discrete){
+      const n = Math.round(p1);
+      const barW = (w-2*pad)/(n+1)*0.7;
+      for(let k=0;k<=n;k++){
+        const yy = pdf(k);
+        ctx.fillStyle = css('--accent')+'cc';
+        ctx.fillRect(px(k)-barW/2, py(yy), barW, py(0)-py(yy));
+      }
+    } else {
+      ctx.fillStyle = css('--accent')+'33';
+      ctx.beginPath(); ctx.moveTo(px(xMin), py(0));
+      for(let i=0;i<=300;i++){ const x=xMin+(xMax-xMin)*i/300; ctx.lineTo(px(x), py(pdf(x))); }
+      ctx.lineTo(px(xMax),py(0)); ctx.closePath(); ctx.fill();
+      plotFn(ctx,px,py,xMin,xMax,pdf,css('--accent'),2.5);
+    }
+
+    document.getElementById('di-mean').textContent = mean.toFixed(3);
+    document.getElementById('di-var').textContent = variance.toFixed(3);
+  }
+};
+
+/* =========================================================
+   STATS 2: Central Limit Theorem
+========================================================= */
+const clt = {
+  html:`
+    <div class="lesson-head"><h2>🎲 Central Limit Theorem</h2>
+    <p class="sub">Take the average of many random samples, over and over — no matter how skewed the original distribution is, those averages pile up into a bell curve. Watch it happen.</p></div>
+    <div class="panel">
+      <h3>Sampling Simulation</h3>
+      <div class="canvas-wrap"><canvas id="clt-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Source distribution</label>
+          <select id="clt-src"><option value="uniform">Uniform</option><option value="exponential">Exponential (skewed)</option><option value="bimodal">Bimodal</option></select>
+        </div>
+        <div class="ctrl"><label>Sample size (n) <b id="clt-n-val">5</b></label><input type="range" id="clt-n" min="1" max="50" step="1" value="5"></div>
+        <div class="btn-row"><button class="btn" id="clt-draw">🎲 Draw 400 sample means</button><button class="btn secondary" id="clt-clear">↺ Clear</button></div>
+      </div>
+      <div class="metrics">
+        <div class="m">Sample means collected<b id="clt-count">0</b></div>
+        <div class="m">Mean of means<b id="clt-mean">—</b></div>
+        <div class="m">Std dev of means<b id="clt-std">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain"><h3>What's happening</h3>
+      <p>Each draw takes <span class="key">n</span> random values from a (possibly very non-normal) source distribution, averages them, and adds that one average to the histogram. As <span class="key">n</span> grows, the histogram of averages converges to a normal bell shape — this is the Central Limit Theorem, and it's why the normal distribution shows up constantly in statistics regardless of what the underlying data looks like.</p>
+    </div>`,
+  means: [],
+  sample(){
+    const src = document.getElementById('clt-src').value;
+    if(src==='uniform') return Math.random()*10;
+    if(src==='exponential') return -Math.log(1-Math.random())*3;
+    // bimodal
+    return Math.random()<0.5 ? 2+Math.random()*1.5 : 8+Math.random()*1.5;
+  },
+  init(){
+    document.getElementById('clt-n').oninput = e=>document.getElementById('clt-n-val').textContent=e.target.value;
+    document.getElementById('clt-src').onchange = ()=>{ this.means=[]; this.render(); };
+    document.getElementById('clt-draw').onclick = ()=>{
+      const n = parseInt(document.getElementById('clt-n').value);
+      for(let i=0;i<400;i++){
+        let s=0; for(let j=0;j<n;j++) s+=this.sample();
+        this.means.push(s/n);
+      }
+      this.render();
+    };
+    document.getElementById('clt-clear').onclick = ()=>{ this.means=[]; this.render(); };
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('clt-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas); clear(ctx,w,h); const pad=40;
+    const xMin=0,xMax=10;
+    const bins = 30; const counts = Array(bins).fill(0);
+    this.means.forEach(m=>{ const idx = Math.min(bins-1, Math.max(0, Math.floor((m-xMin)/(xMax-xMin)*bins))); counts[idx]++; });
+    const yMax = Math.max(5, ...counts)*1.15;
+    const {px,py} = axes(ctx,w,h,pad,xMin,xMax,0,yMax);
+    const barW = (w-2*pad)/bins;
+    counts.forEach((c,i)=>{
+      const x0 = xMin + (xMax-xMin)*i/bins;
+      ctx.fillStyle = css('--accent')+'cc';
+      ctx.fillRect(px(x0)+1, py(c), barW-2, py(0)-py(c));
+    });
+    document.getElementById('clt-count').textContent = this.means.length;
+    if(this.means.length){
+      const mean = this.means.reduce((a,b)=>a+b,0)/this.means.length;
+      const variance = this.means.reduce((a,b)=>a+(b-mean)**2,0)/this.means.length;
+      document.getElementById('clt-mean').textContent = mean.toFixed(3);
+      document.getElementById('clt-std').textContent = Math.sqrt(variance).toFixed(3);
+    } else {
+      document.getElementById('clt-mean').textContent='—'; document.getElementById('clt-std').textContent='—';
+    }
+  }
+};
+
+/* =========================================================
+   STATS 3: Correlation
+========================================================= */
+const correlation = {
+  html:`
+    <div class="lesson-head"><h2>📊 Correlation & Covariance</h2>
+    <p class="sub">Drag the slider to reshape a scatterplot from perfectly negative to perfectly positive correlation, and watch Pearson's r respond.</p></div>
+    <div class="panel">
+      <h3>Correlation Sandbox</h3>
+      <div class="canvas-wrap"><canvas id="co-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Target correlation <b id="co-r-val">0.70</b></label><input type="range" id="co-r" min="-1" max="1" step="0.02" value="0.7"></div>
+        <div class="btn-row"><button class="btn secondary" id="co-new">🎲 New random data</button></div>
+      </div>
+      <div class="metrics">
+        <div class="m">Pearson r (actual)<b id="co-actual">—</b></div>
+        <div class="m">Covariance<b id="co-cov">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain"><h3>What's happening</h3>
+      <p>Points are generated by blending an independent random variable with a target-correlation formula so the scatter visibly tightens toward a line as |r| → 1 and looks like a random cloud as r → 0. <span class="key">Covariance</span> measures the raw tendency of two variables to move together; <span class="key">Pearson's r</span> normalizes that into a unitless number between −1 and 1, making it comparable across different variables and scales.</p>
+      <p>Remember: correlation captures <em>linear</em> relationships only — two variables can be strongly related in a curved way and still show r ≈ 0.</p>
+    </div>`,
+  base: [],
+  genBase(){ this.base = Array.from({length:60}, ()=>({u:(Math.random()-0.5)*2, v:(Math.random()-0.5)*2})); },
+  init(){
+    if(this.base.length===0) this.genBase();
+    document.getElementById('co-r').oninput = e=>{ document.getElementById('co-r-val').textContent=parseFloat(e.target.value).toFixed(2); this.render(); };
+    document.getElementById('co-new').onclick = ()=>{ this.genBase(); this.render(); };
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('co-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas); clear(ctx,w,h); const pad=40;
+    const targetR = parseFloat(document.getElementById('co-r').value);
+    const pts = this.base.map(p=>({ x: p.u, y: targetR*p.u + Math.sqrt(Math.max(0,1-targetR*targetR))*p.v }));
+    const {px,py} = axes(ctx,w,h,pad,-2.2,2.2,-2.2,2.2);
+    ctx.fillStyle = css('--accent');
+    pts.forEach(p=>{ ctx.beginPath(); ctx.arc(px(p.x),py(p.y),4,0,7); ctx.fill(); });
+
+    const n = pts.length;
+    const mx = pts.reduce((a,p)=>a+p.x,0)/n, my = pts.reduce((a,p)=>a+p.y,0)/n;
+    let cov=0, vx=0, vy=0;
+    pts.forEach(p=>{ cov += (p.x-mx)*(p.y-my); vx+=(p.x-mx)**2; vy+=(p.y-my)**2; });
+    cov/=n; vx/=n; vy/=n;
+    const r = cov/Math.sqrt(vx*vy);
+    document.getElementById('co-actual').textContent = r.toFixed(3);
+    document.getElementById('co-cov').textContent = cov.toFixed(3);
+  }
+};
+
+/* =========================================================
+   STATS 4: Hypothesis Testing
+========================================================= */
+const hypothesis = {
+  html:`
+    <div class="lesson-head"><h2>🧪 Hypothesis Testing (p-values)</h2>
+    <p class="sub">See how a p-value is just the tail area of a distribution beyond your observed statistic — and how the significance threshold α decides "significant" vs "not".</p></div>
+    <div class="panel">
+      <h3>Two-Sample z-test Visual</h3>
+      <div class="canvas-wrap"><canvas id="hy-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Observed z-statistic <b id="hy-z-val">1.50</b></label><input type="range" id="hy-z" min="-4" max="4" step="0.05" value="1.5"></div>
+        <div class="ctrl"><label>Test type</label>
+          <select id="hy-tail"><option value="two">Two-tailed</option><option value="right">Right-tailed</option><option value="left">Left-tailed</option></select>
+        </div>
+        <div class="ctrl"><label>Significance α <b id="hy-a-val">0.05</b></label><input type="range" id="hy-a" min="0.01" max="0.2" step="0.01" value="0.05"></div>
+      </div>
+      <div class="metrics">
+        <div class="m">p-value<b id="hy-p">—</b></div>
+        <div class="m">Decision<b id="hy-decision">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain"><h3>What's happening</h3>
+      <p>Under the null hypothesis, the test statistic follows a standard normal curve. The <span class="key">p-value</span> is the shaded tail area beyond your observed z — the probability of seeing a result this extreme (or more) if the null hypothesis were actually true. If p is smaller than your chosen threshold <span class="key">α</span>, you "reject the null" — the result is called statistically significant.</p>
+      <p>A common trap: a small p-value tells you the result is unlikely under the null, not that your hypothesis is "true" or that the effect is large — always check effect size alongside it.</p>
+    </div>`,
+  normalCdf(z){
+    // Abramowitz-Stegun approximation
+    const t = 1/(1+0.2316419*Math.abs(z));
+    const d = 0.3989423*Math.exp(-z*z/2);
+    let p = d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));
+    if(z>0) p = 1-p;
+    return p;
+  },
+  init(){
+    document.getElementById('hy-z').oninput = e=>{ document.getElementById('hy-z-val').textContent=parseFloat(e.target.value).toFixed(2); this.render(); };
+    document.getElementById('hy-tail').onchange = ()=>this.render();
+    document.getElementById('hy-a').oninput = e=>{ document.getElementById('hy-a-val').textContent=parseFloat(e.target.value).toFixed(2); this.render(); };
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('hy-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas); clear(ctx,w,h); const pad=40;
+    const z = parseFloat(document.getElementById('hy-z').value);
+    const tail = document.getElementById('hy-tail').value;
+    const alpha = parseFloat(document.getElementById('hy-a').value);
+    const xMin=-4,xMax=4,yMax=0.45;
+    const {px,py} = axes(ctx,w,h,pad,xMin,xMax,0,yMax);
+    const pdf = x => (1/Math.sqrt(2*Math.PI))*Math.exp(-x*x/2);
+
+    // shaded region
+    ctx.fillStyle = css('--bad')+'55';
+    function shadeFrom(a,b){
+      ctx.beginPath(); ctx.moveTo(px(a), py(0));
+      for(let i=0;i<=100;i++){ const x=a+(b-a)*i/100; ctx.lineTo(px(x), py(pdf(x))); }
+      ctx.lineTo(px(b),py(0)); ctx.closePath(); ctx.fill();
+    }
+    if(tail==='two'){ shadeFrom(Math.abs(z), xMax); shadeFrom(xMin, -Math.abs(z)); }
+    else if(tail==='right'){ shadeFrom(z, xMax); }
+    else { shadeFrom(xMin, z); }
+
+    plotFn(ctx,px,py,xMin,xMax,pdf,css('--accent'),2.5);
+    ctx.strokeStyle=css('--ok'); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(px(z),py(0)); ctx.lineTo(px(z),py(pdf(z))); ctx.stroke();
+
+    let p;
+    if(tail==='two') p = 2*Math.min(this.normalCdf(z), 1-this.normalCdf(z));
+    else if(tail==='right') p = 1-this.normalCdf(z);
+    else p = this.normalCdf(z);
+    p = Math.max(0, Math.min(1,p));
+
+    document.getElementById('hy-p').textContent = p.toFixed(4);
+    const sig = p < alpha;
+    const el = document.getElementById('hy-decision');
+    el.textContent = sig ? 'Reject H₀ (significant)' : 'Fail to reject H₀';
+    el.style.color = sig ? css('--ok') : css('--bad');
+  }
+};
+
+const LESSONS = { functions, unitcircle, projectile, springs, distributions, clt, correlation, hypothesis };
+document.querySelector('.nav-item').classList.add('active');
+loadLesson('functions');
+</script>
+</body>
+</html>

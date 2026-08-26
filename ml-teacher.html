@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gradient — Learn ML by Watching It Happen</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#151b23; --panel2:#1c232d; --line:#2a3441;
+  --ink:#eaeef2; --ink-dim:#8b98a8; --accent:#6ea8fe; --accent2:#ffb454;
+  --ok:#4fd88a; --bad:#ff6b6b; --radius:12px;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'SF Mono',Consolas,monospace;
+}
+[data-theme="light"]{
+  --bg:#faf8f3; --panel:#ffffff; --panel2:#f1efe6; --line:#e0dccc;
+  --ink:#1a1d22; --ink-dim:#6b7280; --accent:#3568c9; --accent2:#c97a1a;
+  --ok:#1f9e5f; --bad:#d94b4b;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+body{font-family:var(--sans); background:var(--bg); color:var(--ink); min-height:100vh;}
+.topbar{
+  display:flex; align-items:center; justify-content:space-between; padding:14px 24px;
+  border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:30;
+}
+.brand{display:flex; align-items:center; gap:10px;}
+.brand .mark{width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,var(--accent),var(--accent2)); display:flex; align-items:center; justify-content:center; font-weight:800; color:#0d1117;}
+.brand h1{font-size:16px; font-weight:700;}
+.brand span{font-size:11px; color:var(--ink-dim); font-family:var(--mono);}
+.theme-toggle{border:1px solid var(--line); background:var(--panel2); color:var(--ink); padding:7px 12px; border-radius:20px; cursor:pointer; font-size:12px;}
+
+.layout{display:grid; grid-template-columns:260px 1fr; min-height:calc(100vh - 58px);}
+@media (max-width:880px){ .layout{grid-template-columns:1fr;} .nav{position:static; max-height:none;} }
+
+.nav{border-right:1px solid var(--line); background:var(--panel); padding:16px 10px; position:sticky; top:58px; max-height:calc(100vh - 58px); overflow-y:auto;}
+.nav .group-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-dim); padding:12px 10px 6px;}
+.nav-item{
+  display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:8px; cursor:pointer;
+  font-size:13px; color:var(--ink-dim); margin-bottom:2px;
+}
+.nav-item:hover{background:var(--panel2); color:var(--ink);}
+.nav-item.active{background:var(--panel2); color:var(--ink); box-shadow:inset 3px 0 0 var(--accent); font-weight:600;}
+.nav-item .ic{font-size:15px; width:18px; text-align:center;}
+
+.main{padding:26px 30px; max-width:1000px;}
+.lesson-head h2{font-size:22px; font-weight:800; margin-bottom:6px;}
+.lesson-head p.sub{color:var(--ink-dim); font-size:14px; max-width:640px; line-height:1.6; margin-bottom:22px;}
+
+.panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px; margin-bottom:18px;}
+.panel h3{font-size:12.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-dim); margin-bottom:12px;}
+.canvas-wrap{position:relative; width:100%; height:360px; background:var(--panel2); border-radius:8px; overflow:hidden;}
+canvas{display:block; width:100%; height:100%;}
+
+.controls{display:flex; flex-wrap:wrap; gap:16px; margin-top:14px; align-items:flex-end;}
+.ctrl{display:flex; flex-direction:column; gap:5px; min-width:130px;}
+.ctrl label{font-size:11px; color:var(--ink-dim); display:flex; justify-content:space-between;}
+.ctrl label b{color:var(--ink); font-family:var(--mono); font-weight:600;}
+input[type=range]{accent-color:var(--accent); width:150px;}
+.btn{
+  background:var(--accent); color:#0d1117; border:none; font-weight:700; padding:9px 16px;
+  border-radius:8px; cursor:pointer; font-size:13px;
+}
+.btn.secondary{background:var(--panel2); color:var(--ink); border:1px solid var(--line);}
+.btn:hover{filter:brightness(1.08);}
+.btn-row{display:flex; gap:8px; flex-wrap:wrap;}
+
+.metrics{display:flex; gap:22px; flex-wrap:wrap; margin-top:12px; font-family:var(--mono); font-size:13px;}
+.metrics .m{color:var(--ink-dim);}
+.metrics .m b{color:var(--accent); font-size:15px; display:block;}
+
+.explain{font-size:13.5px; line-height:1.75; color:var(--ink);}
+.explain p{margin-bottom:10px;}
+.explain .key{color:var(--accent); font-weight:700;}
+.badge{display:inline-block; padding:2px 8px; border-radius:10px; background:var(--panel2); font-size:11px; color:var(--ink-dim); border:1px solid var(--line); margin-right:6px;}
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="topbar">
+  <div class="brand">
+    <div class="mark">G</div>
+    <div><h1>Gradient</h1><span>interactive ML concept lab</span></div>
+  </div>
+  <button class="theme-toggle" onclick="toggleTheme()"><span id="themeIcon">☾</span> <span id="themeLabel">Dark</span></button>
+</div>
+
+<div class="layout">
+  <div class="nav" id="nav">
+    <div class="group-label">Foundations</div>
+    <div class="nav-item" data-lesson="linreg"><span class="ic">📈</span>Linear Regression</div>
+    <div class="nav-item" data-lesson="gd"><span class="ic">⛰️</span>Gradient Descent</div>
+    <div class="nav-item" data-lesson="overfit"><span class="ic">🌊</span>Overfitting & Bias-Variance</div>
+    <div class="group-label">Classification</div>
+    <div class="nav-item" data-lesson="logreg"><span class="ic">🎯</span>Logistic Regression</div>
+    <div class="nav-item" data-lesson="knn"><span class="ic">🧩</span>K-Nearest Neighbors</div>
+    <div class="group-label">Unsupervised</div>
+    <div class="nav-item" data-lesson="kmeans"><span class="ic">🔵</span>K-Means Clustering</div>
+    <div class="group-label">Neural Nets</div>
+    <div class="nav-item" data-lesson="neuron"><span class="ic">⚡</span>The Single Neuron</div>
+    <div class="nav-item" data-lesson="activation"><span class="ic">〰️</span>Activation Functions</div>
+  </div>
+
+  <div class="main" id="mainArea"></div>
+</div>
+
+<script>
+/* ---------- theme ---------- */
+function toggleTheme(){
+  const b = document.body;
+  const next = b.getAttribute('data-theme')==='dark' ? 'light' : 'dark';
+  b.setAttribute('data-theme', next);
+  document.getElementById('themeIcon').textContent = next==='dark' ? '☾' : '☀';
+  document.getElementById('themeLabel').textContent = next==='dark' ? 'Dark' : 'Light';
+  if(currentLesson) LESSONS[currentLesson].render();
+}
+function css(v){ return getComputedStyle(document.body).getPropertyValue(v).trim(); }
+
+/* ---------- nav ---------- */
+let currentLesson = null;
+document.querySelectorAll('.nav-item').forEach(item=>{
+  item.onclick = ()=>{
+    document.querySelectorAll('.nav-item').forEach(i=>i.classList.remove('active'));
+    item.classList.add('active');
+    loadLesson(item.dataset.lesson);
+  };
+});
+function loadLesson(id){
+  currentLesson = id;
+  const area = document.getElementById('mainArea');
+  area.innerHTML = LESSONS[id].html;
+  LESSONS[id].init();
+}
+
+/* ---------- canvas helpers ---------- */
+function setupCanvas(canvas){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return {ctx, w: rect.width, h: rect.height};
+}
+function clear(ctx,w,h){ ctx.clearRect(0,0,w,h); }
+function gridLines(ctx,w,h,pad){
+  ctx.strokeStyle = css('--line'); ctx.lineWidth=1;
+  for(let i=0;i<=10;i++){
+    const x = pad + (w-2*pad)*i/10;
+    ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,h-pad); ctx.stroke();
+    const y = pad + (h-2*pad)*i/10;
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(w-pad,y); ctx.stroke();
+  }
+  ctx.strokeStyle = css('--ink-dim');
+  ctx.beginPath(); ctx.moveTo(pad,h-pad); ctx.lineTo(w-pad,h-pad); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad,pad); ctx.lineTo(pad,h-pad); ctx.stroke();
+}
+
+/* =========================================================
+   LESSON 1: Linear Regression
+========================================================= */
+const linreg = {
+  html: `
+    <div class="lesson-head">
+      <h2>📈 Linear Regression</h2>
+      <p class="sub">Fit a straight line through scattered points by minimizing the sum of squared errors. Drag the sliders and watch the line — and the error — respond live.</p>
+    </div>
+    <div class="panel">
+      <h3>Live Fit</h3>
+      <div class="canvas-wrap"><canvas id="lr-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Slope (m) <b id="lr-m-val">0.50</b></label><input type="range" id="lr-m" min="-2" max="2" step="0.01" value="0.5"></div>
+        <div class="ctrl"><label>Intercept (b) <b id="lr-b-val">0.00</b></label><input type="range" id="lr-b" min="-5" max="5" step="0.1" value="0"></div>
+        <div class="btn-row">
+          <button class="btn" id="lr-fit">✨ Auto-fit (least squares)</button>
+          <button class="btn secondary" id="lr-new">🎲 New random data</button>
+        </div>
+      </div>
+      <div class="metrics">
+        <div class="m">Mean Squared Error<b id="lr-mse">—</b></div>
+        <div class="m">R² Score<b id="lr-r2">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain">
+      <h3>What's happening</h3>
+      <p>Each point is <span class="key">(x, y)</span> data. The line is <span class="key">y = m·x + b</span>. For every point, the vertical gap between the line and the point is the <span class="key">error (residual)</span>. Squaring and averaging those gaps gives the <span class="key">Mean Squared Error (MSE)</span> — the number the model is trying to minimize.</p>
+      <p>Move the sliders manually and see MSE change, then hit <b>Auto-fit</b> to see the closed-form least-squares solution snap the line to the best possible fit instantly.</p>
+    </div>
+  `,
+  points: [],
+  genData(){
+    this.points = [];
+    const trueM = (Math.random()*2-1)*1.5, trueB = (Math.random()*6-3);
+    for(let i=0;i<28;i++){
+      const x = Math.random()*10;
+      const y = trueM*x + trueB + (Math.random()-0.5)*4;
+      this.points.push({x,y});
+    }
+  },
+  init(){
+    if(this.points.length===0) this.genData();
+    const mSlider = document.getElementById('lr-m'), bSlider = document.getElementById('lr-b');
+    mSlider.oninput = ()=>{ document.getElementById('lr-m-val').textContent = parseFloat(mSlider.value).toFixed(2); this.render(); };
+    bSlider.oninput = ()=>{ document.getElementById('lr-b-val').textContent = parseFloat(bSlider.value).toFixed(2); this.render(); };
+    document.getElementById('lr-fit').onclick = ()=>{
+      const n = this.points.length;
+      const sx=this.points.reduce((a,p)=>a+p.x,0), sy=this.points.reduce((a,p)=>a+p.y,0);
+      const sxy=this.points.reduce((a,p)=>a+p.x*p.y,0), sxx=this.points.reduce((a,p)=>a+p.x*p.x,0);
+      const m = (n*sxy - sx*sy)/(n*sxx - sx*sx);
+      const b = (sy - m*sx)/n;
+      mSlider.value = Math.max(-2,Math.min(2,m)); bSlider.value = Math.max(-5,Math.min(5,b));
+      document.getElementById('lr-m-val').textContent = parseFloat(mSlider.value).toFixed(2);
+      document.getElementById('lr-b-val').textContent = parseFloat(bSlider.value).toFixed(2);
+      this.render();
+    };
+    document.getElementById('lr-new').onclick = ()=>{ this.genData(); this.render(); };
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('lr-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas);
+    clear(ctx,w,h); const pad=36;
+    gridLines(ctx,w,h,pad);
+    const m = parseFloat(document.getElementById('lr-m').value), b = parseFloat(document.getElementById('lr-b').value);
+    const xs = this.points.map(p=>p.x), ys = this.points.map(p=>p.y);
+    const xMin=0,xMax=10, yMin=Math.min(...ys)-3, yMax=Math.max(...ys)+3;
+    const px = x => pad + (w-2*pad)*(x-xMin)/(xMax-xMin);
+    const py = y => (h-pad) - (h-2*pad)*(y-yMin)/(yMax-yMin);
+
+    // residuals
+    ctx.strokeStyle = css('--bad'); ctx.lineWidth=1;
+    this.points.forEach(p=>{
+      const yhat = m*p.x+b;
+      ctx.globalAlpha=.5;
+      ctx.beginPath(); ctx.moveTo(px(p.x),py(p.y)); ctx.lineTo(px(p.x),py(yhat)); ctx.stroke();
+    });
+    ctx.globalAlpha=1;
+
+    // line
+    ctx.strokeStyle = css('--accent'); ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(px(xMin), py(m*xMin+b)); ctx.lineTo(px(xMax), py(m*xMax+b)); ctx.stroke();
+
+    // points
+    ctx.fillStyle = css('--accent2');
+    this.points.forEach(p=>{ ctx.beginPath(); ctx.arc(px(p.x),py(p.y),4,0,7); ctx.fill(); });
+
+    // metrics
+    const mse = this.points.reduce((a,p)=>a+Math.pow(p.y-(m*p.x+b),2),0)/this.points.length;
+    const yMean = ys.reduce((a,v)=>a+v,0)/ys.length;
+    const ssTot = ys.reduce((a,v)=>a+Math.pow(v-yMean,2),0);
+    const ssRes = this.points.reduce((a,p)=>a+Math.pow(p.y-(m*p.x+b),2),0);
+    const r2 = 1 - ssRes/ssTot;
+    document.getElementById('lr-mse').textContent = mse.toFixed(3);
+    document.getElementById('lr-r2').textContent = r2.toFixed(3);
+  }
+};
+
+/* =========================================================
+   LESSON 2: Gradient Descent
+========================================================= */
+const gd = {
+  html:`
+    <div class="lesson-head">
+      <h2>⛰️ Gradient Descent</h2>
+      <p class="sub">Watch a ball roll downhill on a loss curve. Each step it looks at the local slope (gradient) and moves opposite to it. Too big a step size and it overshoots; too small and it crawls.</p>
+    </div>
+    <div class="panel">
+      <h3>Descent on a Loss Curve</h3>
+      <div class="canvas-wrap"><canvas id="gd-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Learning rate <b id="gd-lr-val">0.10</b></label><input type="range" id="gd-lr" min="0.01" max="0.9" step="0.01" value="0.1"></div>
+        <div class="ctrl"><label>Start position <b id="gd-x-val">-4.0</b></label><input type="range" id="gd-x" min="-5" max="5" step="0.1" value="-4"></div>
+        <div class="btn-row">
+          <button class="btn" id="gd-step">▶ Step</button>
+          <button class="btn" id="gd-run">⏩ Run to convergence</button>
+          <button class="btn secondary" id="gd-reset">↺ Reset</button>
+        </div>
+      </div>
+      <div class="metrics">
+        <div class="m">Step<b id="gd-iter">0</b></div>
+        <div class="m">Position (x)<b id="gd-pos">—</b></div>
+        <div class="m">Loss f(x)<b id="gd-loss">—</b></div>
+        <div class="m">Gradient f'(x)<b id="gd-grad">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain">
+      <h3>What's happening</h3>
+      <p>The curve is a simple loss function <span class="key">f(x) = x⁴/16 − x²/2 + x/4 + 6</span> with a couple of dips (local minima). At every step, gradient descent computes the slope at the ball's current x, then updates: <span class="key">x ← x − learning_rate × f'(x)</span>.</p>
+      <p>Try a large learning rate and watch it overshoot or oscillate. Try starting on the other side to land in a different local minimum — this is why initialization matters in real training.</p>
+    </div>
+  `,
+  x: -4, iter: 0, timer: null,
+  f(x){ return x**4/16 - x**2/2 + x/4 + 6; },
+  fp(x){ return x**3/4 - x + 0.25; },
+  init(){
+    const xSlider = document.getElementById('gd-x');
+    xSlider.oninput = ()=>{ this.x = parseFloat(xSlider.value); this.iter=0; document.getElementById('gd-x-val').textContent=this.x.toFixed(1); this.render(); };
+    document.getElementById('gd-lr').oninput = e=>{ document.getElementById('gd-lr-val').textContent = parseFloat(e.target.value).toFixed(2); };
+    document.getElementById('gd-step').onclick = ()=>this.step();
+    document.getElementById('gd-run').onclick = ()=>{
+      clearInterval(this.timer);
+      let count=0;
+      this.timer = setInterval(()=>{ this.step(); count++; if(count>150 || Math.abs(this.fp(this.x))<0.001) clearInterval(this.timer); }, 60);
+    };
+    document.getElementById('gd-reset').onclick = ()=>{ clearInterval(this.timer); this.x=parseFloat(xSlider.value); this.iter=0; this.render(); };
+    this.render();
+  },
+  step(){
+    const lr = parseFloat(document.getElementById('gd-lr').value);
+    this.x = this.x - lr*this.fp(this.x);
+    this.x = Math.max(-5.5, Math.min(5.5, this.x));
+    this.iter++;
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('gd-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas);
+    clear(ctx,w,h); const pad=36;
+    gridLines(ctx,w,h,pad);
+    const xMin=-5.5,xMax=5.5, yMin=0, yMax=12;
+    const px = x => pad + (w-2*pad)*(x-xMin)/(xMax-xMin);
+    const py = y => (h-pad) - (h-2*pad)*(y-yMin)/(yMax-yMin);
+
+    ctx.strokeStyle = css('--accent'); ctx.lineWidth=2.5; ctx.beginPath();
+    for(let i=0;i<=200;i++){ const x = xMin + (xMax-xMin)*i/200; const y=this.f(x); const X=px(x),Y=py(y); i===0?ctx.moveTo(X,Y):ctx.lineTo(X,Y); }
+    ctx.stroke();
+
+    // ball
+    const bx=px(this.x), by=py(this.f(this.x));
+    ctx.fillStyle = css('--accent2');
+    ctx.beginPath(); ctx.arc(bx,by,7,0,7); ctx.fill();
+    ctx.strokeStyle=css('--panel'); ctx.lineWidth=2; ctx.stroke();
+
+    document.getElementById('gd-iter').textContent = this.iter;
+    document.getElementById('gd-pos').textContent = this.x.toFixed(3);
+    document.getElementById('gd-loss').textContent = this.f(this.x).toFixed(3);
+    document.getElementById('gd-grad').textContent = this.fp(this.x).toFixed(3);
+  }
+};
+
+/* =========================================================
+   LESSON 3: Overfitting / Bias-Variance
+========================================================= */
+const overfit = {
+  html:`
+    <div class="lesson-head">
+      <h2>🌊 Overfitting & Bias-Variance</h2>
+      <p class="sub">Fit a polynomial of increasing degree to noisy data. Low degree underfits (high bias); very high degree memorizes the noise (high variance) instead of the underlying pattern.</p>
+    </div>
+    <div class="panel">
+      <h3>Polynomial Fit</h3>
+      <div class="canvas-wrap"><canvas id="of-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Polynomial degree <b id="of-deg-val">1</b></label><input type="range" id="of-deg" min="1" max="12" step="1" value="1"></div>
+        <div class="btn-row"><button class="btn secondary" id="of-new">🎲 New random data</button></div>
+      </div>
+      <div class="metrics">
+        <div class="m">Train Error<b id="of-train">—</b></div>
+        <div class="m">Test Error<b id="of-test">—</b></div>
+        <div class="m">Regime<b id="of-regime">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain">
+      <h3>What's happening</h3>
+      <p>Filled dots are <span class="key">training points</span>, hollow dots are unseen <span class="key">test points</span> drawn from the same true curve. As degree increases, the curve bends to pass closer to every training point — training error keeps dropping — but it starts wiggling wildly between points, hurting test error. That gap is the classic <span class="key">bias–variance tradeoff</span>.</p>
+    </div>
+  `,
+  trainPts: [], testPts: [],
+  trueFn(x){ return 2*Math.sin(x*0.8) + 0.3*x; },
+  genData(){
+    this.trainPts=[]; this.testPts=[];
+    for(let i=0;i<14;i++){ const x=Math.random()*10-5; this.trainPts.push({x, y:this.trueFn(x)+(Math.random()-0.5)*1.6}); }
+    for(let i=0;i<10;i++){ const x=Math.random()*10-5; this.testPts.push({x, y:this.trueFn(x)+(Math.random()-0.5)*1.6}); }
+  },
+  polyFit(points, degree){
+    // least squares via normal equations (small degree, ok to be naive)
+    const n = degree+1;
+    const X = points.map(p=>{ const row=[]; for(let d=0;d<n;d++) row.push(Math.pow(p.x,d)); return row; });
+    const y = points.map(p=>p.y);
+    // X^T X
+    const XtX = Array.from({length:n},()=>Array(n).fill(0));
+    const Xty = Array(n).fill(0);
+    for(let i=0;i<X.length;i++){
+      for(let a=0;a<n;a++){
+        Xty[a]+=X[i][a]*y[i];
+        for(let b2=0;b2<n;b2++) XtX[a][b2]+=X[i][a]*X[i][b2];
+      }
+    }
+    // regularize slightly for numerical stability at high degree
+    for(let a=0;a<n;a++) XtX[a][a]+=1e-6;
+    // gaussian elimination solve XtX * coef = Xty
+    const A = XtX.map((row,i)=>[...row, Xty[i]]);
+    for(let i=0;i<n;i++){
+      let maxRow=i; for(let k=i+1;k<n;k++) if(Math.abs(A[k][i])>Math.abs(A[maxRow][i])) maxRow=k;
+      [A[i],A[maxRow]]=[A[maxRow],A[i]];
+      if(Math.abs(A[i][i])<1e-12) A[i][i]=1e-12;
+      for(let k=i+1;k<n;k++){ const f=A[k][i]/A[i][i]; for(let j=i;j<=n;j++) A[k][j]-=f*A[i][j]; }
+    }
+    const coef=Array(n).fill(0);
+    for(let i=n-1;i>=0;i--){ let s=A[i][n]; for(let j=i+1;j<n;j++) s-=A[i][j]*coef[j]; coef[i]=s/A[i][i]; }
+    return coef;
+  },
+  evalPoly(coef,x){ let s=0; for(let d=0;d<coef.length;d++) s+=coef[d]*Math.pow(x,d); return s; },
+  init(){
+    if(this.trainPts.length===0) this.genData();
+    document.getElementById('of-deg').oninput = e=>{ document.getElementById('of-deg-val').textContent=e.target.value; this.render(); };
+    document.getElementById('of-new').onclick = ()=>{ this.genData(); this.render(); };
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('of-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas);
+    clear(ctx,w,h); const pad=36;
+    gridLines(ctx,w,h,pad);
+    const degree = parseInt(document.getElementById('of-deg').value);
+    const coef = this.polyFit(this.trainPts, degree);
+    const xMin=-5.5,xMax=5.5, yMin=-6,yMax=6;
+    const px = x => pad + (w-2*pad)*(x-xMin)/(xMax-xMin);
+    const py = y => (h-pad) - (h-2*pad)*(Math.max(yMin,Math.min(yMax,y))-yMin)/(yMax-yMin);
+
+    // true function (dim)
+    ctx.strokeStyle = css('--ink-dim'); ctx.lineWidth=1.5; ctx.setLineDash([4,4]); ctx.beginPath();
+    for(let i=0;i<=200;i++){ const x=xMin+(xMax-xMin)*i/200; const y=this.trueFn(x); const X=px(x),Y=py(y); i===0?ctx.moveTo(X,Y):ctx.lineTo(X,Y); }
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // fitted curve
+    ctx.strokeStyle = css('--accent'); ctx.lineWidth=2.5; ctx.beginPath();
+    let started=false;
+    for(let i=0;i<=300;i++){
+      const x=xMin+(xMax-xMin)*i/300; const y=this.evalPoly(coef,x);
+      if(y<yMin-20||y>yMax+20){ started=false; continue; }
+      const X=px(x),Y=py(y);
+      if(!started){ ctx.moveTo(X,Y); started=true; } else ctx.lineTo(X,Y);
+    }
+    ctx.stroke();
+
+    // train points (filled)
+    ctx.fillStyle = css('--accent2');
+    this.trainPts.forEach(p=>{ ctx.beginPath(); ctx.arc(px(p.x),py(p.y),4.5,0,7); ctx.fill(); });
+    // test points (hollow)
+    ctx.strokeStyle = css('--ok'); ctx.lineWidth=2;
+    this.testPts.forEach(p=>{ ctx.beginPath(); ctx.arc(px(p.x),py(p.y),5,0,7); ctx.stroke(); });
+
+    const trainErr = this.trainPts.reduce((a,p)=>a+Math.pow(p.y-this.evalPoly(coef,p.x),2),0)/this.trainPts.length;
+    const testErr = this.testPts.reduce((a,p)=>a+Math.pow(p.y-this.evalPoly(coef,p.x),2),0)/this.testPts.length;
+    document.getElementById('of-train').textContent = trainErr.toFixed(3);
+    document.getElementById('of-test').textContent = testErr.toFixed(3);
+    let regime = 'Good fit';
+    if(degree<=2) regime='Underfitting (high bias)';
+    else if(testErr > trainErr*3 + 1) regime='Overfitting (high variance)';
+    document.getElementById('of-regime').textContent = regime;
+  }
+};
+
+/* =========================================================
+   LESSON 4: Logistic Regression
+========================================================= */
+const logreg = {
+  html:`
+    <div class="lesson-head">
+      <h2>🎯 Logistic Regression</h2>
+      <p class="sub">A linear decision boundary separates two classes. The sigmoid squashes the linear score into a probability. Drag the boundary controls and watch how points get classified.</p>
+    </div>
+    <div class="panel">
+      <h3>Decision Boundary</h3>
+      <div class="canvas-wrap"><canvas id="log-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Weight w1 <b id="log-w1-val">1.00</b></label><input type="range" id="log-w1" min="-3" max="3" step="0.05" value="1"></div>
+        <div class="ctrl"><label>Weight w2 <b id="log-w2-val">1.00</b></label><input type="range" id="log-w2" min="-3" max="3" step="0.05" value="1"></div>
+        <div class="ctrl"><label>Bias <b id="log-b-val">0.00</b></label><input type="range" id="log-b" min="-5" max="5" step="0.1" value="0"></div>
+        <div class="btn-row">
+          <button class="btn" id="log-fit">✨ Train (gradient descent)</button>
+          <button class="btn secondary" id="log-new">🎲 New random data</button>
+        </div>
+      </div>
+      <div class="metrics">
+        <div class="m">Accuracy<b id="log-acc">—</b></div>
+        <div class="m">Log Loss<b id="log-loss">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain">
+      <h3>What's happening</h3>
+      <p>Score = <span class="key">w1·x + w2·y + b</span>. That score passes through the sigmoid function to become a probability between 0 and 1. The boundary line is where probability = 0.5. The background shading shows predicted probability everywhere on the plane — sharp color transition = confident boundary.</p>
+      <p>Click <b>Train</b> to run real gradient descent on the log-loss and watch the boundary converge automatically.</p>
+    </div>
+  `,
+  pts: [],
+  genData(){
+    this.pts = [];
+    const cx1=3+Math.random()*2, cy1=3+Math.random()*2, cx2=-3-Math.random()*2, cy2=-3-Math.random()*2;
+    for(let i=0;i<25;i++) this.pts.push({x:cx1+(Math.random()-0.5)*4, y:cy1+(Math.random()-0.5)*4, label:1});
+    for(let i=0;i<25;i++) this.pts.push({x:cx2+(Math.random()-0.5)*4, y:cy2+(Math.random()-0.5)*4, label:0});
+  },
+  sigmoid(z){ return 1/(1+Math.exp(-z)); },
+  init(){
+    if(this.pts.length===0) this.genData();
+    ['w1','w2','b'].forEach(k=>{
+      const el = document.getElementById('log-'+k);
+      el.oninput = ()=>{ document.getElementById('log-'+k+'-val').textContent = parseFloat(el.value).toFixed(2); this.render(); };
+    });
+    document.getElementById('log-new').onclick = ()=>{ this.genData(); this.render(); };
+    document.getElementById('log-fit').onclick = ()=>{
+      let w1=parseFloat(document.getElementById('log-w1').value), w2=parseFloat(document.getElementById('log-w2').value), b=parseFloat(document.getElementById('log-b').value);
+      const lr=0.03;
+      for(let iter=0; iter<400; iter++){
+        let gw1=0,gw2=0,gb=0;
+        this.pts.forEach(p=>{
+          const pred = this.sigmoid(w1*p.x+w2*p.y+b);
+          const err = pred - p.label;
+          gw1+=err*p.x; gw2+=err*p.y; gb+=err;
+        });
+        w1 -= lr*gw1/this.pts.length; w2 -= lr*gw2/this.pts.length; b -= lr*gb/this.pts.length;
+      }
+      document.getElementById('log-w1').value=Math.max(-3,Math.min(3,w1));
+      document.getElementById('log-w2').value=Math.max(-3,Math.min(3,w2));
+      document.getElementById('log-b').value=Math.max(-5,Math.min(5,b));
+      ['w1','w2','b'].forEach(k=>document.getElementById('log-'+k+'-val').textContent = parseFloat(document.getElementById('log-'+k).value).toFixed(2));
+      this.render();
+    };
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('log-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas);
+    const pad=36;
+    const w1=parseFloat(document.getElementById('log-w1').value), w2=parseFloat(document.getElementById('log-w2').value), b=parseFloat(document.getElementById('log-b').value);
+    const xMin=-8,xMax=8,yMin=-8,yMax=8;
+    const px = x => pad + (w-2*pad)*(x-xMin)/(xMax-xMin);
+    const py = y => (h-pad) - (h-2*pad)*(y-yMin)/(yMax-yMin);
+
+    // probability field
+    const res=40;
+    for(let i=0;i<res;i++){
+      for(let j=0;j<res;j++){
+        const x = xMin + (xMax-xMin)*i/res, y = yMin + (yMax-yMin)*j/res;
+        const p = this.sigmoid(w1*x+w2*y+b);
+        const alpha = Math.abs(p-0.5)*0.5;
+        ctx.fillStyle = p>0.5 ? `rgba(110,168,254,${alpha})` : `rgba(255,180,84,${alpha})`;
+        ctx.fillRect(px(x), py(y+(yMax-yMin)/res), (w-2*pad)/res+1, (h-2*pad)/res+1);
+      }
+    }
+    gridLines(ctx,w,h,pad);
+
+    // boundary line: w1x+w2y+b=0 -> y = -(w1x+b)/w2
+    if(Math.abs(w2)>1e-6){
+      ctx.strokeStyle = css('--ink'); ctx.lineWidth=2.5; ctx.beginPath();
+      const y1 = -(w1*xMin+b)/w2, y2=-(w1*xMax+b)/w2;
+      ctx.moveTo(px(xMin),py(y1)); ctx.lineTo(px(xMax),py(y2)); ctx.stroke();
+    }
+
+    let correct=0, loss=0;
+    this.pts.forEach(p=>{
+      const prob = this.sigmoid(w1*p.x+w2*p.y+b);
+      const predLabel = prob>0.5?1:0;
+      if(predLabel===p.label) correct++;
+      loss += -(p.label*Math.log(prob+1e-9) + (1-p.label)*Math.log(1-prob+1e-9));
+      ctx.fillStyle = p.label===1 ? css('--accent') : css('--accent2');
+      ctx.beginPath(); ctx.arc(px(p.x),py(p.y),5,0,7); ctx.fill();
+      ctx.strokeStyle = css('--panel'); ctx.lineWidth=1.5; ctx.stroke();
+    });
+    document.getElementById('log-acc').textContent = (100*correct/this.pts.length).toFixed(1)+'%';
+    document.getElementById('log-loss').textContent = (loss/this.pts.length).toFixed(3);
+  }
+};
+
+/* =========================================================
+   LESSON 5: KNN
+========================================================= */
+const knn = {
+  html:`
+    <div class="lesson-head">
+      <h2>🧩 K-Nearest Neighbors</h2>
+      <p class="sub">Classify a new point by majority vote among its K closest neighbors. Click anywhere on the canvas to drop a test point and see how it gets classified.</p>
+    </div>
+    <div class="panel">
+      <h3>Click to Classify</h3>
+      <div class="canvas-wrap"><canvas id="knn-canvas" style="cursor:crosshair;"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>K (neighbors) <b id="knn-k-val">3</b></label><input type="range" id="knn-k" min="1" max="15" step="1" value="3"></div>
+        <div class="btn-row"><button class="btn secondary" id="knn-new">🎲 New random data</button></div>
+      </div>
+      <div class="metrics"><div class="m">Click canvas to test a point → predicted class shows here<b id="knn-result">—</b></div></div>
+    </div>
+    <div class="panel explain">
+      <h3>What's happening</h3>
+      <p>Blue and orange dots are labeled training data. Click anywhere to place a query point (shown as a star); the K nearest training points get highlighted and connected with lines, and the majority label among them decides the prediction.</p>
+      <p>Try small K (very local, jagged boundaries, sensitive to noise) versus large K (smoother, more stable, but can blur real boundaries).</p>
+    </div>
+  `,
+  pts: [], query: null,
+  genData(){
+    this.pts=[]; this.query=null;
+    const cx1=3,cy1=2, cx2=-2,cy2=-3;
+    for(let i=0;i<20;i++) this.pts.push({x:cx1+(Math.random()-0.5)*5, y:cy1+(Math.random()-0.5)*5, label:1});
+    for(let i=0;i<20;i++) this.pts.push({x:cx2+(Math.random()-0.5)*5, y:cy2+(Math.random()-0.5)*5, label:0});
+  },
+  init(){
+    if(this.pts.length===0) this.genData();
+    document.getElementById('knn-k').oninput = e=>{ document.getElementById('knn-k-val').textContent=e.target.value; this.render(); };
+    document.getElementById('knn-new').onclick = ()=>{ this.genData(); this.render(); };
+    const canvas = document.getElementById('knn-canvas');
+    canvas.onclick = (e)=>{
+      const rect = canvas.getBoundingClientRect();
+      const w=rect.width, h=rect.height, pad=36;
+      const xMin=-8,xMax=8,yMin=-8,yMax=8;
+      const cx = e.clientX-rect.left, cy = e.clientY-rect.top;
+      const x = xMin + (xMax-xMin)*(cx-pad)/(w-2*pad);
+      const y = yMax - (yMax-yMin)*(cy-pad)/(h-2*pad);
+      this.query = {x,y};
+      this.render();
+    };
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('knn-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas);
+    clear(ctx,w,h); const pad=36;
+    gridLines(ctx,w,h,pad);
+    const xMin=-8,xMax=8,yMin=-8,yMax=8;
+    const px = x => pad + (w-2*pad)*(x-xMin)/(xMax-xMin);
+    const py = y => (h-pad) - (h-2*pad)*(y-yMin)/(yMax-yMin);
+    const K = parseInt(document.getElementById('knn-k').value);
+
+    let neighbors = [];
+    if(this.query){
+      const dists = this.pts.map(p=>({...p, d: Math.hypot(p.x-this.query.x, p.y-this.query.y)})).sort((a,b)=>a.d-b.d);
+      neighbors = dists.slice(0,K);
+      ctx.strokeStyle = css('--ink-dim'); ctx.lineWidth=1; ctx.globalAlpha=.5;
+      neighbors.forEach(n=>{ ctx.beginPath(); ctx.moveTo(px(this.query.x),py(this.query.y)); ctx.lineTo(px(n.x),py(n.y)); ctx.stroke(); });
+      ctx.globalAlpha=1;
+    }
+
+    this.pts.forEach(p=>{
+      const isNeighbor = neighbors.some(n=>n.x===p.x&&n.y===p.y);
+      ctx.fillStyle = p.label===1 ? css('--accent') : css('--accent2');
+      ctx.beginPath(); ctx.arc(px(p.x),py(p.y), isNeighbor?6:4.5,0,7); ctx.fill();
+      if(isNeighbor){ ctx.strokeStyle=css('--ok'); ctx.lineWidth=2; ctx.stroke(); }
+    });
+
+    if(this.query){
+      const votes = {0:0,1:0};
+      neighbors.forEach(n=>votes[n.label]++);
+      const predicted = votes[1]>=votes[0] ? 1 : 0;
+      ctx.fillStyle = css('--ink');
+      const qx=px(this.query.x), qy=py(this.query.y);
+      ctx.save(); ctx.translate(qx,qy); ctx.beginPath();
+      for(let i=0;i<5;i++){ const a=Math.PI/2+i*2*Math.PI/5; const a2=a+Math.PI/5;
+        ctx.lineTo(Math.cos(a)*9, -Math.sin(a)*9); ctx.lineTo(Math.cos(a2)*4, -Math.sin(a2)*4);
+      }
+      ctx.closePath(); ctx.fillStyle = predicted===1?css('--accent'):css('--accent2'); ctx.fill();
+      ctx.strokeStyle=css('--ink'); ctx.lineWidth=1.5; ctx.stroke();
+      ctx.restore();
+      document.getElementById('knn-result').textContent = `Class ${predicted} (votes: ${votes[1]} vs ${votes[0]})`;
+    } else {
+      document.getElementById('knn-result').textContent = '—';
+    }
+  }
+};
+
+/* =========================================================
+   LESSON 6: K-Means
+========================================================= */
+const kmeans = {
+  html:`
+    <div class="lesson-head">
+      <h2>🔵 K-Means Clustering</h2>
+      <p class="sub">Watch cluster centers move step by step: assign each point to its nearest center, then move each center to the average of its assigned points. Repeat until stable.</p>
+    </div>
+    <div class="panel">
+      <h3>Live Clustering</h3>
+      <div class="canvas-wrap"><canvas id="km-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>K (clusters) <b id="km-k-val">3</b></label><input type="range" id="km-k" min="2" max="6" step="1" value="3"></div>
+        <div class="btn-row">
+          <button class="btn" id="km-step">▶ Step</button>
+          <button class="btn" id="km-run">⏩ Run to convergence</button>
+          <button class="btn secondary" id="km-new">🎲 New random data</button>
+        </div>
+      </div>
+      <div class="metrics">
+        <div class="m">Iteration<b id="km-iter">0</b></div>
+        <div class="m">Inertia (total dist²)<b id="km-inertia">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain">
+      <h3>What's happening</h3>
+      <p>Diamonds are cluster centers, dots are data points colored by their current assignment. Each <b>step</b> alternates: (1) reassign every point to its nearest center, (2) move every center to the mean of its points. Inertia (total squared distance to assigned centers) should decrease every step until it plateaus — that's convergence.</p>
+    </div>
+  `,
+  pts: [], centers: [], iter:0, timer:null,
+  genData(){
+    this.pts=[];
+    const blobs=3+Math.floor(Math.random()*2);
+    for(let b=0;b<blobs;b++){
+      const cx=(Math.random()-0.5)*12, cy=(Math.random()-0.5)*12;
+      for(let i=0;i<15;i++) this.pts.push({x:cx+(Math.random()-0.5)*3, y:cy+(Math.random()-0.5)*3, cluster:0});
+    }
+    this.resetCenters();
+  },
+  resetCenters(){
+    const K = parseInt(document.getElementById('km-k')?.value || 3);
+    this.centers = Array.from({length:K}, ()=>({x:(Math.random()-0.5)*14, y:(Math.random()-0.5)*14}));
+    this.iter=0;
+  },
+  init(){
+    if(this.pts.length===0) this.genData();
+    document.getElementById('km-k').oninput = e=>{ document.getElementById('km-k-val').textContent=e.target.value; this.resetCenters(); this.render(); };
+    document.getElementById('km-step').onclick = ()=>this.step();
+    document.getElementById('km-run').onclick = ()=>{
+      clearInterval(this.timer); let count=0;
+      this.timer = setInterval(()=>{ this.step(); count++; if(count>40) clearInterval(this.timer); }, 200);
+    };
+    document.getElementById('km-new').onclick = ()=>{ clearInterval(this.timer); this.genData(); this.render(); };
+    this.render();
+  },
+  step(){
+    // assign
+    this.pts.forEach(p=>{
+      let best=0, bd=Infinity;
+      this.centers.forEach((c,i)=>{ const d=(p.x-c.x)**2+(p.y-c.y)**2; if(d<bd){bd=d; best=i;} });
+      p.cluster = best;
+    });
+    // update
+    this.centers.forEach((c,i)=>{
+      const members = this.pts.filter(p=>p.cluster===i);
+      if(members.length){ c.x = members.reduce((a,p)=>a+p.x,0)/members.length; c.y = members.reduce((a,p)=>a+p.y,0)/members.length; }
+    });
+    this.iter++;
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('km-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas);
+    clear(ctx,w,h); const pad=36;
+    gridLines(ctx,w,h,pad);
+    const xMin=-8,xMax=8,yMin=-8,yMax=8;
+    const px = x => pad + (w-2*pad)*(x-xMin)/(xMax-xMin);
+    const py = y => (h-pad) - (h-2*pad)*(y-yMin)/(yMax-yMin);
+    const colors = ['#6ea8fe','#ffb454','#4fd88a','#ff6b6b','#c58ce0','#6dc9c9'];
+
+    let inertia=0;
+    this.pts.forEach(p=>{
+      ctx.fillStyle = colors[p.cluster % colors.length];
+      ctx.beginPath(); ctx.arc(px(p.x),py(p.y),4.5,0,7); ctx.fill();
+      const c = this.centers[p.cluster];
+      if(c) inertia += (p.x-c.x)**2+(p.y-c.y)**2;
+    });
+    this.centers.forEach((c,i)=>{
+      const X=px(c.x), Y=py(c.y);
+      ctx.save(); ctx.translate(X,Y); ctx.rotate(Math.PI/4);
+      ctx.fillStyle = colors[i%colors.length];
+      ctx.fillRect(-7,-7,14,14);
+      ctx.strokeStyle = css('--ink'); ctx.lineWidth=2; ctx.strokeRect(-7,-7,14,14);
+      ctx.restore();
+    });
+    document.getElementById('km-iter').textContent = this.iter;
+    document.getElementById('km-inertia').textContent = inertia.toFixed(1);
+  }
+};
+
+/* =========================================================
+   LESSON 7: Single Neuron
+========================================================= */
+const neuron = {
+  html:`
+    <div class="lesson-head">
+      <h2>⚡ The Single Neuron</h2>
+      <p class="sub">A neuron takes weighted inputs, adds a bias, and squashes the result through an activation function. This is the atomic unit every neural network is built from.</p>
+    </div>
+    <div class="panel">
+      <h3>Neuron Playground</h3>
+      <div class="canvas-wrap"><canvas id="nr-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl"><label>Input x1 <b id="nr-x1-val">1.00</b></label><input type="range" id="nr-x1" min="-2" max="2" step="0.05" value="1"></div>
+        <div class="ctrl"><label>Weight w1 <b id="nr-w1-val">0.50</b></label><input type="range" id="nr-w1" min="-2" max="2" step="0.05" value="0.5"></div>
+        <div class="ctrl"><label>Input x2 <b id="nr-x2-val">-0.50</b></label><input type="range" id="nr-x2" min="-2" max="2" step="0.05" value="-0.5"></div>
+        <div class="ctrl"><label>Weight w2 <b id="nr-w2-val">1.00</b></label><input type="range" id="nr-w2" min="-2" max="2" step="0.05" value="1"></div>
+        <div class="ctrl"><label>Bias <b id="nr-b-val">0.00</b></label><input type="range" id="nr-b" min="-2" max="2" step="0.05" value="0"></div>
+      </div>
+      <div class="metrics">
+        <div class="m">Weighted sum (z)<b id="nr-z">—</b></div>
+        <div class="m">Activation: sigmoid(z)<b id="nr-out">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain">
+      <h3>What's happening</h3>
+      <p>The diagram shows signal flowing: inputs × weights get summed with the bias into <span class="key">z = w1x1 + w2x2 + b</span>, then squashed by the sigmoid into a value between 0 and 1 — the neuron's output. Line thickness shows the magnitude of each weight; color shows sign (blue = positive, orange = negative).</p>
+      <p>Stack many of these neurons in layers, each feeding the next, and you get a neural network — the same idea repeated and composed.</p>
+    </div>
+  `,
+  init(){
+    ['x1','w1','x2','w2','b'].forEach(k=>{
+      const el = document.getElementById('nr-'+k);
+      el.oninput = ()=>{ document.getElementById('nr-'+k+'-val').textContent = parseFloat(el.value).toFixed(2); this.render(); };
+    });
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('nr-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas);
+    clear(ctx,w,h);
+    const x1=parseFloat(document.getElementById('nr-x1').value), w1=parseFloat(document.getElementById('nr-w1').value);
+    const x2=parseFloat(document.getElementById('nr-x2').value), w2=parseFloat(document.getElementById('nr-w2').value);
+    const b=parseFloat(document.getElementById('nr-b').value);
+    const z = x1*w1+x2*w2+b;
+    const out = 1/(1+Math.exp(-z));
+
+    const inNodes = [{x:80,y:h*0.3,label:`x1=${x1.toFixed(2)}`},{x:80,y:h*0.7,label:`x2=${x2.toFixed(2)}`}];
+    const sumNode = {x:w*0.5, y:h*0.5};
+    const outNode = {x:w-90, y:h*0.5};
+
+    function edge(p1,p2,weight){
+      ctx.strokeStyle = weight>=0 ? css('--accent') : css('--accent2');
+      ctx.lineWidth = Math.max(1, Math.min(7, Math.abs(weight)*3));
+      ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
+    }
+    edge(inNodes[0], sumNode, w1);
+    edge(inNodes[1], sumNode, w2);
+    ctx.strokeStyle = css('--ink-dim'); ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(sumNode.x,sumNode.y); ctx.lineTo(outNode.x,outNode.y); ctx.stroke();
+
+    function node(p, r, fill, label, sub){
+      ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fillStyle=fill; ctx.fill();
+      ctx.strokeStyle = css('--panel'); ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle = css('--ink'); ctx.font='12px Inter, sans-serif'; ctx.textAlign='center';
+      if(label) ctx.fillText(label, p.x, p.y - r - 8);
+      if(sub) ctx.fillText(sub, p.x, p.y + r + 18);
+    }
+    node(inNodes[0], 22, css('--panel2'), inNodes[0].label);
+    node(inNodes[1], 22, css('--panel2'), inNodes[1].label);
+    node(sumNode, 28, css('--panel2'), 'Σ + bias', 'z='+z.toFixed(2));
+    node(outNode, 26, css('--ok'), 'σ(z)', out.toFixed(3));
+
+    document.getElementById('nr-z').textContent = z.toFixed(3);
+    document.getElementById('nr-out').textContent = out.toFixed(3);
+  }
+};
+
+/* =========================================================
+   LESSON 8: Activation Functions
+========================================================= */
+const activation = {
+  html:`
+    <div class="lesson-head">
+      <h2>〰️ Activation Functions</h2>
+      <p class="sub">Activations add non-linearity so networks can learn curved, complex patterns instead of just straight lines. Compare shapes and watch the derivative (the slope used in backprop).</p>
+    </div>
+    <div class="panel">
+      <h3>Function Comparison</h3>
+      <div class="canvas-wrap"><canvas id="ac-canvas"></canvas></div>
+      <div class="controls">
+        <div class="ctrl">
+          <label>Function</label>
+          <select id="ac-fn" style="padding:7px; border-radius:6px; background:var(--panel2); color:var(--ink); border:1px solid var(--line);">
+            <option value="sigmoid">Sigmoid</option>
+            <option value="tanh">Tanh</option>
+            <option value="relu">ReLU</option>
+            <option value="leaky">Leaky ReLU</option>
+            <option value="gelu">GELU (approx)</option>
+          </select>
+        </div>
+        <div class="ctrl"><label>Probe x <b id="ac-x-val">1.00</b></label><input type="range" id="ac-x" min="-5" max="5" step="0.05" value="1"></div>
+      </div>
+      <div class="metrics">
+        <div class="m">f(x)<b id="ac-fx">—</b></div>
+        <div class="m">f'(x) — slope<b id="ac-fpx">—</b></div>
+      </div>
+    </div>
+    <div class="panel explain">
+      <h3>What's happening</h3>
+      <p>The solid line is the activation function; the dashed line is its derivative. The dot marks your probe point on the curve, with a tangent line showing the local slope. Notice how <span class="key">sigmoid/tanh</span> derivatives shrink toward zero far from the origin (the "vanishing gradient" problem), while <span class="key">ReLU</span>'s derivative stays flat at 1 for positive inputs — one reason it trains faster in deep networks.</p>
+    </div>
+  `,
+  fns: {
+    sigmoid: {f:x=>1/(1+Math.exp(-x)), fp:x=>{const s=1/(1+Math.exp(-x)); return s*(1-s);}},
+    tanh: {f:x=>Math.tanh(x), fp:x=>1-Math.tanh(x)**2},
+    relu: {f:x=>Math.max(0,x), fp:x=>x>0?1:0},
+    leaky: {f:x=>x>0?x:0.1*x, fp:x=>x>0?1:0.1},
+    gelu: {f:x=>0.5*x*(1+Math.tanh(Math.sqrt(2/Math.PI)*(x+0.044715*x**3))), fp:x=>{
+      const h=0.0001; return (activation.fns.gelu.f(x+h)-activation.fns.gelu.f(x-h))/(2*h);
+    }}
+  },
+  init(){
+    document.getElementById('ac-fn').onchange = ()=>this.render();
+    document.getElementById('ac-x').oninput = e=>{ document.getElementById('ac-x-val').textContent = parseFloat(e.target.value).toFixed(2); this.render(); };
+    this.render();
+  },
+  render(){
+    const canvas = document.getElementById('ac-canvas'); if(!canvas) return;
+    const {ctx,w,h} = setupCanvas(canvas);
+    clear(ctx,w,h); const pad=36;
+    gridLines(ctx,w,h,pad);
+    const fnKey = document.getElementById('ac-fn').value;
+    const fn = this.fns[fnKey];
+    const xMin=-5,xMax=5,yMin=-1.5,yMax=2;
+    const px = x => pad + (w-2*pad)*(x-xMin)/(xMax-xMin);
+    const py = y => (h-pad) - (h-2*pad)*(Math.max(yMin,Math.min(yMax,y))-yMin)/(yMax-yMin);
+
+    ctx.strokeStyle = css('--accent'); ctx.lineWidth=2.5; ctx.beginPath();
+    for(let i=0;i<=300;i++){ const x=xMin+(xMax-xMin)*i/300; const y=fn.f(x); const X=px(x),Y=py(y); i===0?ctx.moveTo(X,Y):ctx.lineTo(X,Y); }
+    ctx.stroke();
+
+    ctx.strokeStyle = css('--accent2'); ctx.lineWidth=1.8; ctx.setLineDash([5,4]); ctx.beginPath();
+    for(let i=0;i<=300;i++){ const x=xMin+(xMax-xMin)*i/300; const y=fn.fp(x); const X=px(x),Y=py(y); i===0?ctx.moveTo(X,Y):ctx.lineTo(X,Y); }
+    ctx.stroke(); ctx.setLineDash([]);
+
+    const xp = parseFloat(document.getElementById('ac-x').value);
+    const yp = fn.f(xp), slope = fn.fp(xp);
+    // tangent
+    ctx.strokeStyle = css('--ok'); ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(px(xp-1), py(yp-slope)); ctx.lineTo(px(xp+1), py(yp+slope)); ctx.stroke();
+    ctx.fillStyle = css('--ok'); ctx.beginPath(); ctx.arc(px(xp),py(yp),5,0,7); ctx.fill();
+
+    document.getElementById('ac-fx').textContent = yp.toFixed(3);
+    document.getElementById('ac-fpx').textContent = slope.toFixed(3);
+  }
+};
+
+const LESSONS = { linreg, gd, overfit, logreg, knn, kmeans, neuron, activation };
+
+// load first lesson by default
+document.querySelector('.nav-item').classList.add('active');
+loadLesson('linreg');
+</script>
+</body>
+</html>
