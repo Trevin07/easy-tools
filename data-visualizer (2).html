@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plotbench — Upload Any Data, See It Instantly</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!--
+  Charting is done with plain <canvas> — no Chart.js, no charting library at all —
+  so this page keeps working even with no internet connection, an ad-blocker,
+  or a locked-down network. Only Excel (.xlsx/.xls) parsing uses a CDN library
+  (SheetJS, loaded above); if that fails to load, CSV/TSV/JSON still work fully,
+  and Excel files get a clear message instead of a silent crash.
+-->
+<style>
+:root{
+  --bg:#0f1210; --panel:#161b18; --panel2:#1d2320; --line:#2a322d;
+  --ink:#eef2ee; --ink-dim:#a9b3ac; --accent:#8fd4a0; --accent2:#e8b86d;
+  --danger:#e07a6f; --radius:10px; --mono:'SF Mono',Consolas,'Courier New',monospace;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+[data-theme="light"]{
+  --bg:#f6f4ee; --panel:#ffffff; --panel2:#eeece3; --line:#dcd8cb;
+  --ink:#1c1f1a; --ink-dim:#63685f; --accent:#3d7a4d; --accent2:#a5691f;
+  --danger:#b8443a;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+body{
+  font-family:var(--sans); background:var(--bg); color:var(--ink);
+  min-height:100vh; transition:background .25s,color .25s;
+}
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 22px; border-bottom:1px solid var(--line); background:var(--panel);
+  position:sticky; top:0; z-index:20;
+}
+.brand{display:flex; align-items:center; gap:10px;}
+.brand .mark{
+  width:30px; height:30px; border-radius:7px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex; align-items:center; justify-content:center; font-weight:800; color:#111;
+}
+.brand h1{font-size:16px; font-weight:700; letter-spacing:.2px;}
+.brand span{font-size:11px; color:var(--ink-dim); font-family:var(--mono);}
+.theme-toggle{
+  border:1px solid var(--line); background:var(--panel2); color:var(--ink);
+  padding:7px 12px; border-radius:20px; cursor:pointer; font-size:12px; font-family:var(--mono);
+  display:flex; align-items:center; gap:6px;
+}
+.theme-toggle:hover{border-color:var(--accent);}
+
+.layout{display:grid; grid-template-columns:340px 1fr; gap:0; min-height:calc(100vh - 58px);}
+@media (max-width:900px){ .layout{grid-template-columns:1fr;} }
+
+.sidebar{
+  border-right:1px solid var(--line); padding:20px; background:var(--panel);
+  display:flex; flex-direction:column; gap:18px; max-height:calc(100vh - 58px); overflow-y:auto;
+}
+.card{background:var(--panel2); border:1px solid var(--line); border-radius:var(--radius); padding:14px;}
+.card h3{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-dim); margin-bottom:10px; font-weight:600;}
+
+.dropzone{
+  border:1.5px dashed var(--line); border-radius:var(--radius); padding:22px 14px;
+  text-align:center; cursor:pointer; transition:.2s; background:var(--panel);
+}
+.dropzone:hover, .dropzone.drag{border-color:var(--accent); background:var(--panel2);}
+.dropzone .ic{font-size:26px; margin-bottom:6px;}
+.dropzone p{font-size:12.5px; color:var(--ink-dim); line-height:1.5;}
+.dropzone strong{color:var(--ink);}
+input[type=file]{display:none;}
+
+.filemeta{font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); margin-top:8px; word-break:break-all;}
+
+select, .btn, input[type=text], input[type=number]{
+  width:100%; padding:9px 10px; border-radius:8px; border:1px solid var(--line);
+  background:var(--panel); color:var(--ink); font-size:13px; font-family:var(--sans);
+}
+select:focus, input:focus{outline:none; border-color:var(--accent);}
+label.field{display:block; font-size:11.5px; color:var(--ink-dim); margin:10px 0 5px;}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+
+.chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
+.chip{
+  padding:5px 10px; border-radius:14px; border:1px solid var(--line); background:var(--panel);
+  font-size:11.5px; cursor:pointer; color:var(--ink-dim); user-select:none;
+}
+.chip.active{background:var(--accent); color:#0f1210; border-color:var(--accent); font-weight:600;}
+
+.chart-type-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;}
+.ct{
+  padding:10px 6px; text-align:center; border:1px solid var(--line); border-radius:8px;
+  cursor:pointer; font-size:11.5px; background:var(--panel); color:var(--ink-dim);
+}
+.ct .ic{font-size:18px; display:block; margin-bottom:3px;}
+.ct.active{border-color:var(--accent); color:var(--ink); background:var(--panel2); box-shadow:inset 0 0 0 1px var(--accent);}
+
+.usecase-box textarea{
+  width:100%; min-height:56px; resize:vertical; border-radius:8px; border:1px solid var(--line);
+  background:var(--panel); color:var(--ink); padding:9px 10px; font-size:12.5px; font-family:var(--sans);
+}
+.suggest-btn{
+  margin-top:8px; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#111;
+  border:none; font-weight:700; cursor:pointer; padding:9px; border-radius:8px; font-size:12.5px;
+}
+.suggest-btn:hover{filter:brightness(1.05);}
+.hint{font-size:11px; color:var(--ink-dim); margin-top:6px; line-height:1.5;}
+
+.main{padding:22px 26px; overflow-y:auto;}
+.empty{
+  height:70vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  color:var(--ink-dim); text-align:center; gap:10px;
+}
+.empty .big{font-size:44px;}
+.empty h2{color:var(--ink); font-size:18px; font-weight:600;}
+.empty p{font-size:13px; max-width:380px; line-height:1.6;}
+
+.chart-wrap{
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:18px; margin-bottom:18px;
+}
+.chart-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;}
+.chart-header h2{font-size:15px; font-weight:700;}
+.chart-actions{display:flex; gap:8px;}
+.icon-btn{
+  border:1px solid var(--line); background:var(--panel2); color:var(--ink-dim); border-radius:7px;
+  padding:6px 10px; font-size:11.5px; cursor:pointer; font-family:var(--mono);
+}
+.icon-btn:hover{color:var(--ink); border-color:var(--accent);}
+.canvas-box{position:relative; height:420px;}
+
+.stats-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:18px;}
+.stat{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px;}
+.stat .label{font-size:10.5px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.06em;}
+.stat .value{font-size:19px; font-weight:700; margin-top:3px; font-family:var(--mono);}
+
+table{width:100%; border-collapse:collapse; font-size:12px;}
+table th, table td{padding:7px 10px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap;}
+table th{color:var(--ink-dim); font-weight:600; position:sticky; top:0; background:var(--panel);}
+.table-wrap{max-height:280px; overflow:auto; border:1px solid var(--line); border-radius:var(--radius);}
+
+.error-box{background:rgba(224,122,111,.12); border:1px solid var(--danger); color:var(--danger); padding:10px 12px; border-radius:8px; font-size:12.5px; margin-top:8px;}
+::-webkit-scrollbar{width:9px; height:9px;}
+::-webkit-scrollbar-thumb{background:var(--line); border-radius:5px;}
+.spinner{width:16px; height:16px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; display:inline-block; vertical-align:middle; margin-right:6px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="topbar">
+  <div class="brand">
+    <div class="mark">P</div>
+    <div>
+      <h1>Plotbench</h1>
+      <span>upload almost anything → chart it in seconds</span>
+    </div>
+  </div>
+  <button class="theme-toggle" onclick="toggleTheme()"><span id="themeIcon">☾</span> <span id="themeLabel">Dark</span></button>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+
+    <div class="card">
+      <h3>1. Upload Data</h3>
+      <div class="dropzone" id="dropzone">
+        <div class="ic">📁</div>
+        <p><strong>Click to upload</strong> or drag a file here<br>CSV · TSV · JSON · Excel (.xlsx/.xls) · TXT</p>
+      </div>
+      <input type="file" id="fileInput" accept=".csv,.tsv,.json,.xlsx,.xls,.txt">
+      <div class="filemeta" id="fileMeta"></div>
+      <div id="loadError"></div>
+    </div>
+
+    <div class="card" id="fieldsCard" style="display:none;">
+      <h3>2. Columns</h3>
+      <label class="field">X axis / category</label>
+      <select id="xField"></select>
+      <label class="field">Y axis / value(s) — click to toggle multiple</label>
+      <div class="chips" id="yFieldChips"></div>
+      <div class="hint" id="yFieldHint"></div>
+      <label class="field">Group / color by (optional)</label>
+      <select id="groupField"><option value="">— none —</option></select>
+    </div>
+
+    <div class="card" id="chartTypeCard" style="display:none;">
+      <h3>3. Chart Type</h3>
+      <div class="chart-type-grid" id="chartTypeGrid"></div>
+    </div>
+
+    <div class="card usecase-box" id="usecaseCard" style="display:none;">
+      <h3>4. Describe your use case (optional)</h3>
+      <textarea id="usecaseInput" placeholder="e.g. 'compare monthly revenue across regions' or 'show distribution of ages'"></textarea>
+      <button class="suggest-btn" onclick="suggestFromUseCase()">✦ Suggest chart</button>
+      <div class="hint" id="usecaseHint"></div>
+    </div>
+
+  </div>
+
+  <div class="main" id="main">
+    <div class="empty" id="emptyState">
+      <div class="big">📊</div>
+      <h2>No data loaded yet</h2>
+      <p>Upload a CSV, TSV, JSON array, or Excel file on the left. Plotbench detects your columns, guesses types, and lets you build any chart — no coding, nothing installed, works fully offline once the page is loaded.</p>
+    </div>
+
+    <div id="results" style="display:none;">
+      <div class="stats-grid" id="statsGrid"></div>
+      <div class="chart-wrap">
+        <div class="chart-header">
+          <h2 id="chartTitle">Chart</h2>
+          <div class="chart-actions">
+            <button class="icon-btn" onclick="downloadPNG()">⭳ PNG</button>
+            <button class="icon-btn" onclick="downloadCSVFiltered()">⭳ CSV</button>
+          </div>
+        </div>
+        <div id="chartNote"></div>
+        <div class="canvas-box"><canvas id="mainChart"></canvas></div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-header"><h2>Raw data preview</h2></div>
+        <div class="table-wrap"><table id="dataTable"></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let rawRows = [], columns = [], colTypes = {}, activeYFields = [], chartType = 'bar';
+
+const CHART_TYPES = [
+  {id:'bar', ic:'▮▯▮', label:'Bar'},
+  {id:'line', ic:'⟋', label:'Line'},
+  {id:'scatter', ic:'⋮⋯', label:'Scatter'},
+  {id:'pie', ic:'◔', label:'Pie'},
+  {id:'doughnut', ic:'◎', label:'Doughnut'},
+  {id:'radar', ic:'✦', label:'Radar'},
+  {id:'polarArea', ic:'❋', label:'Polar'},
+  {id:'bubble', ic:'○○', label:'Bubble'},
+];
+
+function toggleTheme(){
+  const b = document.body;
+  const cur = b.getAttribute('data-theme');
+  const next = cur === 'dark' ? 'light' : 'dark';
+  b.setAttribute('data-theme', next);
+  document.getElementById('themeIcon').textContent = next === 'dark' ? '☾' : '☀';
+  document.getElementById('themeLabel').textContent = next === 'dark' ? 'Dark' : 'Light';
+  if(rawRows.length) renderChart();
+}
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+dropzone.addEventListener('click', ()=>fileInput.click());
+dropzone.addEventListener('dragover', e=>{e.preventDefault(); dropzone.classList.add('drag');});
+dropzone.addEventListener('dragleave', ()=>dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e=>{
+  e.preventDefault(); dropzone.classList.remove('drag');
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e=>{ if(e.target.files.length) handleFile(e.target.files[0]); });
+
+function showError(msg){
+  document.getElementById('loadError').innerHTML = `<div class="error-box">⚠ ${msg}</div>`;
+}
+function clearError(){ document.getElementById('loadError').innerHTML=''; }
+
+function handleFile(file){
+  clearError();
+  document.getElementById('fileMeta').textContent = `${file.name} · ${(file.size/1024).toFixed(1)} KB`;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+
+  if(ext === 'xlsx' || ext === 'xls'){
+    if(typeof XLSX === 'undefined'){
+      showError('Excel support library failed to load (likely no internet connection on first page load). Please save this file as CSV and upload that instead — CSV, TSV, and JSON all work fully offline.');
+      return;
+    }
+    reader.onload = e => {
+      try{
+        const wb = XLSX.read(e.target.result, {type:'array'});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, {defval:null});
+        ingestRows(json);
+      }catch(err){ showError('Could not parse Excel file: '+err.message); }
+    };
+    reader.onerror = () => showError('Could not read the file from disk.');
+    reader.readAsArrayBuffer(file);
+  } else if(ext === 'json'){
+    reader.onload = e => {
+      try{
+        let data = JSON.parse(e.target.result);
+        if(!Array.isArray(data)){
+          const arrKey = Object.keys(data).find(k=>Array.isArray(data[k]));
+          if(arrKey) data = data[arrKey];
+          else data = [data];
+        }
+        ingestRows(data);
+      }catch(err){ showError('Could not parse JSON: '+err.message); }
+    };
+    reader.onerror = () => showError('Could not read the file from disk.');
+    reader.readAsText(file);
+  } else {
+    // csv, tsv, txt -> built-in parser, auto-detects delimiter, no external library
+    reader.onload = e => {
+      try{
+        const rows = parseDelimited(e.target.result);
+        if(rows.length === 0){ showError('Could not find any rows in this file.'); return; }
+        ingestRows(rows);
+      }catch(err){ showError('Could not parse file: '+err.message); }
+    };
+    reader.onerror = () => showError('Could not read the file from disk.');
+    reader.readAsText(file);
+  }
+}
+
+// Minimal, dependency-free delimited-text parser (handles CSV and TSV,
+// quoted fields with embedded delimiters/newlines, and doubled "" escapes).
+function parseDelimited(text){
+  const firstLine = text.split(/\r?\n/)[0] || '';
+  const delim = (firstLine.split('\t').length > firstLine.split(',').length) ? '\t' : ',';
+  const rows = [];
+  let i=0, field='', row=[], inQuotes=false;
+  const pushField = ()=>{ row.push(field); field=''; };
+  const pushRow = ()=>{ pushField(); rows.push(row); row=[]; };
+  while(i < text.length){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    } else {
+      if(c === '"'){ inQuotes = true; i++; continue; }
+      if(c === delim){ pushField(); i++; continue; }
+      if(c === '\n'){ pushRow(); i++; continue; }
+      if(c === '\r'){ i++; continue; }
+      field += c; i++; continue;
+    }
+  }
+  if(field.length || row.length) pushRow();
+
+  const filtered = rows.filter(r => r.length > 1 || (r.length === 1 && r[0] !== ''));
+  if(filtered.length < 1) return [];
+  const headers = filtered[0].map(h => h.trim() || '(unnamed)');
+  return filtered.slice(1).map(r=>{
+    const obj = {};
+    headers.forEach((h,idx)=>{
+      const raw = r[idx] !== undefined ? r[idx].trim() : '';
+      if(raw !== '' && !isNaN(raw)) obj[h] = parseFloat(raw);
+      else obj[h] = raw === '' ? null : raw;
+    });
+    return obj;
+  });
+}
+
+function detectType(values){
+  const nonNull = values.filter(v=>v!==null && v!==undefined && v!=='');
+  if(nonNull.length===0) return 'string';
+  const numCount = nonNull.filter(v=>typeof v==='number' || (!isNaN(parseFloat(v)) && isFinite(v))).length;
+  if(numCount/nonNull.length > 0.85) return 'number';
+  const dateCount = nonNull.filter(v=>!isNaN(Date.parse(v)) && isNaN(v)).length;
+  if(dateCount/nonNull.length > 0.7) return 'date';
+  return 'string';
+}
+
+function ingestRows(rows){
+  if(!rows || rows.length===0){ showError('No rows found in file.'); return; }
+  rawRows = rows;
+  columns = Object.keys(rows[0]);
+  colTypes = {};
+  columns.forEach(c=>{
+    colTypes[c] = detectType(rows.map(r=>r[c]));
+  });
+  buildFieldSelectors();
+  document.getElementById('fieldsCard').style.display='block';
+  document.getElementById('chartTypeCard').style.display='block';
+  document.getElementById('usecaseCard').style.display='block';
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('results').style.display='block';
+  autoPickDefaults();       // decides xField / yFields / chartType first...
+  buildChartTypeGrid();     // ...then the grid is built already highlighting the right one
+  renderAll();
+}
+
+function buildFieldSelectors(){
+  const xSel = document.getElementById('xField');
+  const gSel = document.getElementById('groupField');
+  xSel.innerHTML=''; gSel.innerHTML='<option value="">— none —</option>';
+  columns.forEach(c=>{
+    xSel.innerHTML += `<option value="${c}">${c} (${colTypes[c]})</option>`;
+    gSel.innerHTML += `<option value="${c}">${c}</option>`;
+  });
+  const yChips = document.getElementById('yFieldChips');
+  yChips.innerHTML='';
+  columns.forEach(c=>{
+    const chip = document.createElement('div');
+    chip.className='chip'; chip.textContent = c; chip.dataset.field=c;
+    chip.onclick = ()=>{
+      if(activeYFields.includes(c)) activeYFields = activeYFields.filter(f=>f!==c);
+      else activeYFields.push(c);
+      chip.classList.toggle('active');
+      renderAll();
+    };
+    yChips.appendChild(chip);
+  });
+  xSel.onchange = renderAll;
+  gSel.onchange = renderAll;
+}
+
+function buildChartTypeGrid(){
+  const grid = document.getElementById('chartTypeGrid');
+  grid.innerHTML='';
+  CHART_TYPES.forEach(ct=>{
+    const el = document.createElement('div');
+    el.className = 'ct' + (ct.id===chartType?' active':'');
+    el.innerHTML = `<span class="ic">${ct.ic}</span>${ct.label}`;
+    el.onclick = ()=>{ chartType = ct.id; document.querySelectorAll('.ct').forEach(x=>x.classList.remove('active')); el.classList.add('active'); updateYHint(); renderAll(); };
+    grid.appendChild(el);
+  });
+  updateYHint();
+}
+
+function updateYHint(){
+  const hintEl = document.getElementById('yFieldHint');
+  if(!hintEl) return;
+  if(chartType === 'bubble') hintEl.textContent = 'For Bubble charts: 1st selected = Y position, 2nd selected = bubble size.';
+  else if(['pie','doughnut','polarArea'].includes(chartType)) hintEl.textContent = 'These charts use only the 1st selected value (summed per category).';
+  else if(chartType === 'scatter') hintEl.textContent = 'Scatter uses the 1st selected value as Y (X must be numeric).';
+  else hintEl.textContent = '';
+}
+
+function autoPickDefaults(){
+  const numCols = columns.filter(c=>colTypes[c]==='number');
+  const strCols = columns.filter(c=>colTypes[c]!=='number');
+  document.getElementById('xField').value = strCols[0] || columns[0];
+  activeYFields = numCols.slice(0,1);
+  document.querySelectorAll('.chip').forEach(chip=>{
+    chip.classList.toggle('active', activeYFields.includes(chip.dataset.field));
+  });
+  chartType = numCols.length>0 ? 'bar' : 'pie';
+}
+
+function suggestFromUseCase(){
+  const text = document.getElementById('usecaseInput').value.toLowerCase();
+  const numCols = columns.filter(c=>colTypes[c]==='number');
+  const strCols = columns.filter(c=>colTypes[c]!=='number');
+  let type = 'bar', hint='';
+  if(/trend|over time|time series|growth|monthly|yearly|daily/.test(text)){ type='line'; hint='Detected a time/trend use case → line chart.'; }
+  else if(/distribution|spread|histogram|frequency/.test(text)){ type='bar'; hint='Detected a distribution use case → bar chart.'; }
+  else if(/proportion|share|percentage|breakdown|composition/.test(text)){ type='doughnut'; hint='Detected a composition use case → doughnut chart.'; }
+  else if(/correlat|relationship|versus|vs\.?\s|scatter/.test(text)){ type='scatter'; hint='Detected a relationship use case → scatter chart.'; }
+  else if(/compare|comparison|across|between/.test(text)){ type='bar'; hint='Detected a comparison use case → bar chart.'; }
+  else if(/rank|multi-dimension|profile/.test(text)){ type='radar'; hint='Detected a multi-dimensional profile → radar chart.'; }
+  else { hint='Using general-purpose defaults — try adding words like "trend", "distribution", or "compare".'; }
+
+  chartType = type;
+  document.querySelectorAll('.ct').forEach(el=>el.classList.toggle('active', el.textContent.trim().toLowerCase().includes(CHART_TYPES.find(c=>c.id===type).label.toLowerCase())));
+  if(numCols.length && activeYFields.length===0){ activeYFields=[numCols[0]]; }
+  document.getElementById('usecaseHint').textContent = hint;
+  renderAll();
+}
+
+function palette(n){
+  const base = ['#8fd4a0','#e8b86d','#7ea8e0','#e07a6f','#c58ce0','#6dc9c9','#e0c26d','#a0e07e','#e07eb0','#7e9be0'];
+  const out=[]; for(let i=0;i<n;i++) out.push(base[i%base.length]); return out;
+}
+
+function getThemeColor(v){
+  return getComputedStyle(document.body).getPropertyValue(v).trim();
+}
+
+function renderAll(){
+  renderStats();
+  renderChart();
+  renderTable();
+}
+
+function renderStats(){
+  const grid = document.getElementById('statsGrid');
+  grid.innerHTML='';
+  const stats = [
+    {label:'Rows', value: rawRows.length},
+    {label:'Columns', value: columns.length},
+    {label:'Numeric cols', value: columns.filter(c=>colTypes[c]==='number').length},
+  ];
+  const yf = activeYFields[0];
+  if(yf){
+    const vals = rawRows.map(r=>parseFloat(r[yf])).filter(v=>!isNaN(v));
+    if(vals.length){
+      const sum = vals.reduce((a,b)=>a+b,0);
+      stats.push({label:`Avg(${yf})`, value:(sum/vals.length).toFixed(2)});
+      stats.push({label:`Max(${yf})`, value:Math.max(...vals).toFixed(2)});
+      stats.push({label:`Min(${yf})`, value:Math.min(...vals).toFixed(2)});
+    }
+  }
+  stats.forEach(s=>{
+    grid.innerHTML += `<div class="stat"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`;
+  });
+}
+
+function numericCols(){ return columns.filter(c=>colTypes[c]==='number'); }
+
+/* ============================================================
+   Pure-canvas chart engine — no Chart.js, no CDN, always works.
+============================================================ */
+let lastChartData = null; // cached for downloadPNG / redraw-on-theme-toggle
+
+function setupCanvas(canvas){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.max(1, rect.width * dpr);
+  canvas.height = Math.max(1, rect.height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.scale(dpr, dpr);
+  return {ctx, w: rect.width || 300, h: rect.height || 300};
+}
+
+function drawAxes(ctx,w,h,pad){
+  ctx.strokeStyle = getThemeColor('--line'); ctx.lineWidth = 1;
+  for(let i=0;i<=10;i++){
+    const x = pad.l + (w-pad.l-pad.r)*i/10;
+    ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,h-pad.b); ctx.stroke();
+    const y = pad.t + (h-pad.t-pad.b)*i/10;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+  }
+  ctx.strokeStyle = getThemeColor('--ink-dim'); ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l,h-pad.b); ctx.lineTo(w-pad.r,h-pad.b); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,h-pad.b); ctx.stroke();
+}
+
+function drawLegend(ctx, w, items, yTop){
+  ctx.font = '12px Inter, sans-serif'; ctx.textBaseline = 'middle';
+  let x = 10, y = yTop;
+  const rowMaxW = w - 20;
+  items.forEach(item=>{
+    const textW = ctx.measureText(item.label).width;
+    const itemW = 26 + textW + 18;
+    if(x + itemW > rowMaxW){ x = 10; y += 20; }
+    ctx.fillStyle = item.color; ctx.fillRect(x, y-6, 12, 12);
+    ctx.fillStyle = getThemeColor('--ink'); ctx.textAlign='left';
+    ctx.fillText(item.label, x+18, y);
+    x += itemW;
+  });
+  return y + 18;
+}
+
+function niceMax(v){
+  if(v<=0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const norm = v/mag;
+  let step; if(norm<=1) step=1; else if(norm<=2) step=2; else if(norm<=5) step=5; else step=10;
+  return step*mag;
+}
+
+function renderChart(){
+  let xField = document.getElementById('xField').value;
+  const groupField = document.getElementById('groupField').value;
+  const canvas = document.getElementById('mainChart');
+  const noteBox = document.getElementById('chartNote');
+  noteBox.innerHTML = '';
+  const {ctx,w,h} = setupCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  // solid background so PNG export / any viewer never shows a broken transparent image
+  ctx.fillStyle = getThemeColor('--panel') || '#ffffff';
+  ctx.fillRect(0,0,w,h);
+  if(!xField){ lastChartData=null; return; }
+
+  // Guard: scatter/bubble need a numeric X. Fall back instead of rendering nothing.
+  if((chartType === 'scatter' || chartType === 'bubble') && colTypes[xField] !== 'number'){
+    const numCols = numericCols();
+    if(numCols.length === 0){
+      noteBox.innerHTML = `<div class="error-box">⚠ ${chartType} charts need a numeric X axis, but this data has no numeric columns. Try Bar, Pie, or Doughnut instead.</div>`;
+      document.getElementById('chartTitle').textContent = 'No numeric data to plot';
+      lastChartData=null; return;
+    }
+    noteBox.innerHTML = `<div class="error-box">⚠ "${xField}" isn't numeric, so it can't drive a ${chartType} chart. Using "${numCols[0]}" for X instead — pick a numeric column above to change it.</div>`;
+    xField = numCols[0];
+  }
+
+  // Guard: grouped bar/line needs a numeric Y to average.
+  if(groupField && activeYFields.length === 0){
+    const numCols = numericCols();
+    if(numCols.length){
+      activeYFields = [numCols[0]];
+      document.querySelectorAll('.chip').forEach(chip=>chip.classList.toggle('active', activeYFields.includes(chip.dataset.field)));
+      noteBox.innerHTML = `<div class="hint">ℹ No Y value was selected, so "${numCols[0]}" was auto-selected to average within each group.</div>`;
+    }
+  }
+
+  document.getElementById('chartTitle').textContent =
+    activeYFields.length ? `${activeYFields.join(', ')} by ${xField}` : `${xField} counts`;
+
+  const ink = getThemeColor('--ink'), inkDim = getThemeColor('--ink-dim');
+
+  if(['pie','doughnut','polarArea'].includes(chartType)){
+    const counts = {};
+    const yf = activeYFields[0];
+    rawRows.forEach(r=>{
+      const key = String(r[xField]);
+      const val = yf ? (parseFloat(r[yf])||0) : 1;
+      counts[key] = (counts[key]||0) + val;
+    });
+    const labels = Object.keys(counts);
+    const values = Object.values(counts);
+    const colors = palette(labels.length);
+    if(labels.length === 0){ noteBox.innerHTML = `<div class="error-box">⚠ No data to chart.</div>`; lastChartData=null; return; }
+
+    const cx = w*0.35, cy = h/2, rMax = Math.min(cx-20, h/2-20);
+    const total = values.reduce((a,b)=>a+b,0) || 1;
+    const maxV = Math.max(...values) || 1;
+    let angle = -Math.PI/2;
+    labels.forEach((lab,i)=>{
+      const slice = values[i]/total * Math.PI*2;
+      const r = chartType==='polarArea' ? rMax * Math.sqrt(values[i]/maxV) : rMax;
+      const inner = chartType==='doughnut' ? r*0.55 : 0;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle)*inner, cy + Math.sin(angle)*inner);
+      ctx.arc(cx, cy, r, angle, angle+slice);
+      ctx.lineTo(cx + Math.cos(angle+slice)*inner, cy + Math.sin(angle+slice)*inner);
+      if(inner>0) ctx.arc(cx, cy, inner, angle+slice, angle, true);
+      ctx.closePath();
+      ctx.fillStyle = colors[i]; ctx.fill();
+      ctx.strokeStyle = getThemeColor('--panel'); ctx.lineWidth=2; ctx.stroke();
+      angle += slice;
+    });
+    // legend on the right
+    ctx.font='12px Inter, sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='left';
+    let ly = 30;
+    labels.forEach((lab,i)=>{
+      if(ly > h-15) return;
+      ctx.fillStyle = colors[i]; ctx.fillRect(w*0.68, ly-6, 12, 12);
+      ctx.fillStyle = ink; ctx.fillText(`${lab} (${values[i].toFixed(1)})`, w*0.68+18, ly);
+      ly += 20;
+    });
+    lastChartData = {type:chartType};
+
+  } else if(chartType === 'scatter' || chartType === 'bubble'){
+    const yf = activeYFields[0] || columns.find(c=>colTypes[c]==='number' && c!==xField);
+    if(!yf){
+      noteBox.innerHTML = `<div class="error-box">⚠ ${chartType} charts need a numeric Y value too — add another numeric column or switch chart type.</div>`;
+      document.getElementById('chartTitle').textContent = 'Not enough numeric columns';
+      lastChartData=null; return;
+    }
+    const sizeField = activeYFields[1];
+    if(chartType === 'bubble' && !sizeField){
+      noteBox.innerHTML = `<div class="hint">ℹ Bubble size needs a 3rd value. Click a 2nd Y-axis chip above (1st = Y position, 2nd = bubble size) — using a fixed size for now.</div>`;
+    }
+    const pts = rawRows.map(r=>({x: parseFloat(r[xField]), y: parseFloat(r[yf]), s: chartType==='bubble' ? Math.max(4, Math.min(30, (parseFloat(r[sizeField])||6))) : 4}))
+                        .filter(d=>!isNaN(d.x) && !isNaN(d.y));
+    if(pts.length === 0){
+      noteBox.innerHTML = `<div class="error-box">⚠ No rows had valid numbers for both "${xField}" and "${yf}" — nothing to plot.</div>`;
+      document.getElementById('chartTitle').textContent = 'No valid data points';
+      lastChartData=null; return;
+    }
+    const pad = {l:55,r:20,t:20,b:45};
+    let xMin=Math.min(...pts.map(p=>p.x)), xMax=Math.max(...pts.map(p=>p.x));
+    let yMin=Math.min(...pts.map(p=>p.y)), yMax=Math.max(...pts.map(p=>p.y));
+    const xPad=(xMax-xMin)*0.08||1, yPad=(yMax-yMin)*0.08||1;
+    xMin-=xPad; xMax+=xPad; yMin-=yPad; yMax+=yPad;
+    drawAxes(ctx,w,h,pad);
+    const px = x => pad.l + (w-pad.l-pad.r)*(x-xMin)/(xMax-xMin);
+    const py = y => (h-pad.b) - (h-pad.t-pad.b)*(y-yMin)/(yMax-yMin);
+    ctx.fillStyle = getThemeColor('--accent')+'cc';
+    ctx.strokeStyle = getThemeColor('--accent');
+    pts.forEach(p=>{ ctx.beginPath(); ctx.arc(px(p.x),py(p.y),p.s,0,Math.PI*2); ctx.fill(); if(chartType==='bubble'){ctx.lineWidth=1; ctx.stroke();} });
+    ctx.fillStyle = inkDim; ctx.font='11px Inter, sans-serif'; ctx.textAlign='center';
+    ctx.fillText(xField, pad.l+(w-pad.l-pad.r)/2, h-8);
+    ctx.save(); ctx.translate(14, pad.t+(h-pad.t-pad.b)/2); ctx.rotate(-Math.PI/2); ctx.fillText(yf,0,0); ctx.restore();
+    lastChartData = {type:chartType};
+
+  } else if(chartType === 'radar'){
+    const labels = activeYFields.length ? activeYFields : numericCols();
+    if(labels.length < 1){
+      noteBox.innerHTML = `<div class="error-box">⚠ Radar charts need at least one numeric Y field selected above.</div>`;
+      lastChartData=null; return;
+    }
+    const sampleRows = rawRows.slice(0, 6);
+    const cx=w*0.42, cy=h/2, rMax=Math.min(cx-30, h/2-40);
+    const n = labels.length;
+    // grid rings + spokes
+    ctx.strokeStyle = getThemeColor('--line');
+    for(let ring=1; ring<=4; ring++){
+      ctx.beginPath();
+      for(let i=0;i<=n;i++){ const a=-Math.PI/2+i*2*Math.PI/n; const r=rMax*ring/4;
+        const X=cx+Math.cos(a)*r, Y=cy+Math.sin(a)*r; i===0?ctx.moveTo(X,Y):ctx.lineTo(X,Y); }
+      ctx.stroke();
+    }
+    ctx.fillStyle = inkDim; ctx.font='11px Inter, sans-serif'; ctx.textAlign='center';
+    labels.forEach((lab,i)=>{
+      const a=-Math.PI/2+i*2*Math.PI/n;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*rMax, cy+Math.sin(a)*rMax); ctx.stroke();
+      ctx.fillText(lab, cx+Math.cos(a)*(rMax+16), cy+Math.sin(a)*(rMax+16));
+    });
+    const colors = palette(sampleRows.length);
+    const maxVal = Math.max(1, ...sampleRows.flatMap(r=>labels.map(l=>parseFloat(r[l])||0)));
+    sampleRows.forEach((r,ri)=>{
+      ctx.beginPath();
+      labels.forEach((l,i)=>{
+        const a=-Math.PI/2+i*2*Math.PI/n; const v=Math.max(0,(parseFloat(r[l])||0))/maxVal*rMax;
+        const X=cx+Math.cos(a)*v, Y=cy+Math.sin(a)*v; i===0?ctx.moveTo(X,Y):ctx.lineTo(X,Y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = colors[ri]+'33'; ctx.fill();
+      ctx.strokeStyle = colors[ri]; ctx.lineWidth=2; ctx.stroke();
+    });
+    ctx.textAlign='left';
+    let ly=20;
+    sampleRows.forEach((r,ri)=>{
+      ctx.fillStyle=colors[ri]; ctx.fillRect(w*0.8, ly-6,12,12);
+      ctx.fillStyle=ink; ctx.fillText(String(r[xField]??'row'+ri), w*0.8+18, ly);
+      ly+=20;
+    });
+    lastChartData = {type:'radar'};
+
+  } else {
+    // bar / line
+    const labels = [...new Set(rawRows.map(r=>r[xField]))];
+    let series; // [{label, color, values:[...]}]
+    if(groupField){
+      const groups = [...new Set(rawRows.map(r=>r[groupField]))];
+      const yf = activeYFields[0] || columns.find(c=>colTypes[c]==='number');
+      const colors = palette(groups.length);
+      series = groups.map((g,i)=>({
+        label: String(g), color: colors[i],
+        values: labels.map(l=>{
+          const vals = rawRows.filter(r=>r[xField]===l && r[groupField]===g).map(r=>parseFloat(r[yf])).filter(v=>!isNaN(v));
+          return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
+        })
+      }));
+    } else if(activeYFields.length){
+      const colors = palette(activeYFields.length);
+      series = activeYFields.map((yf,i)=>({
+        label: yf, color: colors[i],
+        values: labels.map(l=>{
+          const vals = rawRows.filter(r=>r[xField]===l).map(r=>parseFloat(r[yf])).filter(v=>!isNaN(v));
+          return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
+        })
+      }));
+    } else {
+      const counts = {};
+      rawRows.forEach(r=>{ const k=String(r[xField]); counts[k]=(counts[k]||0)+1; });
+      series = [{ label:'count', color:getThemeColor('--accent'), values: labels.map(l=>counts[l]||0) }];
+    }
+
+    const showLegend = series.length > 1;
+    const pad = {l:55,r:20,t: showLegend?36:20, b:60};
+    let allVals = series.flatMap(s=>s.values);
+    let yMax = niceMax(Math.max(1,...allVals));
+    let yMin = Math.min(0, ...allVals);
+    drawAxes(ctx,w,h,pad);
+    const plotW = w-pad.l-pad.r, plotH = h-pad.t-pad.b;
+    const px = i => pad.l + plotW*(i+0.5)/labels.length;
+    const py = v => (h-pad.b) - plotH*(v-yMin)/(yMax-yMin || 1);
+
+    // y-axis labels
+    ctx.fillStyle = inkDim; ctx.font='10.5px Inter, sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle';
+    for(let i=0;i<=5;i++){ const v = yMin + (yMax-yMin)*i/5; ctx.fillText(v.toFixed(1), pad.l-8, py(v)); }
+
+    // x-axis labels (rotate if many)
+    ctx.textAlign = labels.length>8 ? 'right' : 'center'; ctx.textBaseline='top';
+    labels.forEach((l,i)=>{
+      const X = px(i);
+      const lab = String(l).length>12 ? String(l).slice(0,11)+'…' : String(l);
+      if(labels.length>8){
+        ctx.save(); ctx.translate(X, h-pad.b+6); ctx.rotate(-Math.PI/4); ctx.fillText(lab,0,0); ctx.restore();
+      } else {
+        ctx.fillText(lab, X, h-pad.b+8);
+      }
+    });
+
+    if(chartType === 'line'){
+      series.forEach(s=>{
+        ctx.strokeStyle = s.color; ctx.lineWidth=2.5; ctx.beginPath();
+        s.values.forEach((v,i)=>{ const X=px(i),Y=py(v); i===0?ctx.moveTo(X,Y):ctx.lineTo(X,Y); });
+        ctx.stroke();
+        ctx.fillStyle = s.color;
+        s.values.forEach((v,i)=>{ ctx.beginPath(); ctx.arc(px(i),py(v),3.5,0,Math.PI*2); ctx.fill(); });
+      });
+    } else {
+      // bar (grouped if multiple series)
+      const groupW = plotW/labels.length * 0.7;
+      const barW = groupW/series.length;
+      series.forEach((s,si)=>{
+        ctx.fillStyle = s.color;
+        s.values.forEach((v,i)=>{
+          const X = pad.l + plotW*i/labels.length + (plotW/labels.length - groupW)/2 + si*barW;
+          const Y = py(v), Y0 = py(Math.max(0,yMin));
+          ctx.fillRect(X, Math.min(Y,Y0), barW-2, Math.abs(Y0-Y) || 1);
+        });
+      });
+    }
+
+    if(showLegend){
+      drawLegend(ctx, w, series.map(s=>({label:s.label, color:s.color})), 16);
+    }
+    lastChartData = {type:chartType};
+  }
+}
+
+function renderTable(){
+  const table = document.getElementById('dataTable');
+  const previewRows = rawRows.slice(0,50);
+  let html = '<thead><tr>' + columns.map(c=>`<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  previewRows.forEach(r=>{
+    html += '<tr>' + columns.map(c=>`<td>${r[c] ?? ''}</td>`).join('') + '</tr>';
+  });
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+function downloadPNG(){
+  const canvas = document.getElementById('mainChart');
+  if(!canvas || !lastChartData) return;
+  const link = document.createElement('a');
+  link.download = 'chart.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function downloadCSVFiltered(){
+  if(!rawRows.length) return;
+  const escapeCell = v => {
+    if(v === null || v === undefined) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
+  const lines = [columns.map(escapeCell).join(',')];
+  rawRows.forEach(r=> lines.push(columns.map(c=>escapeCell(r[c])).join(',')));
+  const csv = lines.join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const link = document.createElement('a');
+  link.download = 'data_export.csv';
+  link.href = URL.createObjectURL(blob);
+  link.click();
+}
+</script>
+</body>
+</html>
